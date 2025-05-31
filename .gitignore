@@ -1,0 +1,21 @@
+
+---
+
+### 🧹 `.gitignore`
+
+```gitignore
+# dependencies
+node_modules/
+package-lock.json
+
+# production
+dist/
+
+# misc
+.DS_Store
+*.log
+.env
+
+# local development
+.vscode/
+.idea/
