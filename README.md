@@ -50,6 +50,8 @@ Role-based tip weighting presets
 ## 📄 License
 This project is not open source and is protected by a proprietary license. Do not copy, distribute, or modify without permission.
 
-👤 Author
+---
+
+## 👤 Author
 Carlos Iraheta
 [Portfolio Link] | [LinkedIn] | carlos.iraheta.994@gmail.com
