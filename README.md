@@ -30,6 +30,9 @@ git clone https://github.com/ciraheta3/TipSplitter.git
 cd tipsplitter
 npm install
 npm run dev
+```
+
+---
 
 ## 🚀 Future Plans
 Export to PDF
@@ -42,6 +45,7 @@ Dark mode
 
 Role-based tip weighting presets
 
+---
 
 ## 📄 License
 This project is not open source and is protected by a proprietary license. Do not copy, distribute, or modify without permission.
