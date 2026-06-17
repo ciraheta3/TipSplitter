@@ -1,73 +1,65 @@
-# React + TypeScript + Vite
+# 🍽️ TipSplitter (Weighted Share System)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**TipSplitter** is a high-contrast, mobile-first Web Application designed for restaurant managers to quickly and mathematically distribute pooled tips using a weighted point-share allocation engine. 
 
-Currently, two official plugins are available:
+Built strictly to withstand fractional penny variances, it features an on-screen mathematical validation dashboard to audit total pool disbursements in real time.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## 🛠️ Tech Stack & Architecture
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Framework:** React 19 + Vite (TypeScript strict mode)
+- **Styling Layer:** Pure Tailwind CSS v4 (Mobile-First Dashboard)
+- **State Engine:** Synchronous Lazy Initialization via Browser `localStorage`
+- **Testing Methodology:** Socratic Test-Driven Verification Layout
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## ✨ Core Engineering Features
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- **Weighted Share Distribution:** Computes tip allocations using a point-weight matrix ($EmployeeTip = ValuePerShare \times EmployeeWeight$) rather than basic hour splits.
+- **Pennies-to-Dollar Toggle:** Integrated UI switch modifying allocation rounding layers seamlessly between exact standard USD ($0.00) and rounded whole-dollar integers.
+- **Mathematical Variance Auditing:** Live verification dashboard displaying the absolute delta between the total collected tip pool and the sum of actual distributed payouts to protect shifts from under/over-payouts.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+---
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 📦 Getting Started & Local Installation
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Ensure you have [Node.js](https://nodejs.org/) installed inside your environment before running.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+1. **Clone the Repository:**
+   ```bash
+   git clone [https://github.com/ciraheta3/tip-calculator.git](https://github.com/ciraheta3/tip-calculator.git)
+   cd tip-calculator
+   ```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+2. Install Dependencies:
+  ```bash
+  npm install
+  ```
+ 
+3. Launch the Development Server:
+  ```bash
+  npm run dev
+  ```
+
+---
+
+## 🚀 Active Production Roadmap
+
+Progress is tracked internally via our system repository `ROADMAP.md`.
+
+- [x] **Milestone 1:** Core Derived Math Engine & Local Storage Persistence (V1.0)
+- [ ] **Milestone 2:** Hardening Phase (Zero-Weight Validation Gates & Local Storage Type Safety)
+- [ ] **Milestone 3:** Enterprise Payout Utilities (CSV Payroll Export Engine & Roster Templates)
+
+---
+
+## 📄 License & Terms
+This project is proprietary and is protected under a private ownership license. Unauthorized copying, distribution, or modification of this source code via any medium is strictly prohibited.
+
+---
+
+## 👤 Author
+**Carlos Iraheta** 📩 carlosiraheta543@gmail.com  
+[Portfolio Link] | [LinkedIn]
