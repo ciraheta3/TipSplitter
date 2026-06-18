@@ -10,10 +10,10 @@
 - [x] Deploy lazy state initialization to persist data locally via browser localStorage
 
 ## [ ] Milestone 2: Engineering Hardening (V1.1) — CURRENT BATTLEGROUND 🛠️
-- [ ] **Task 2.1: Zero-Weight Edge Case Validation Guard**
+- [x] **Task 2.1: Zero-Weight Edge Case Validation Guard**
   - *Threat:* Roster containing exclusively 0-weight entries breaks calculation runtime.
   - *Fix:* Enforce active form-level rejection or fallback state to prevent layout breaking.
-- [ ] **Task 2.2: Local Storage Defensive Serialization (Type-Safety)**
+- [x] **Task 2.2: Local Storage Defensive Serialization (Type-Safety)**
   - *Threat:* Malformed or corrupted browser data triggers unhandled parsing exceptions on mount.
   - *Fix:* Refactor state initialization block with a explicit `try/catch` and array verification wrapper.
 - [ ] **Task 2.3: Floating-Point Rounding Defense (Cents Scaling Layer)**
