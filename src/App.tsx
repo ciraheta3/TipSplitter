@@ -17,8 +17,27 @@ export default function App() {
   // --- TODO: LOCAL STORAGE PERSISTENCE ---
   // 1. Write a useEffect to load 'employees' from localStorage on initial mount.
   const [employees, setEmployees] = useState<Employee[]>(() => {
-    const saved = localStorage.getItem('employees');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('employees');
+      if (!saved) return [];
+
+      // 1. Attempt to parse the string
+      const parsed = JSON.parse(saved);
+
+      // 2. RUNTIME TYPE GATE: Verifiy it is an array
+      if (Array.isArray(parsed)) {
+        return parsed as Employee[];
+      }
+
+      // If it's valid JSON but NOT an array, log an warning and fall back
+      console.warn("Local storage data found, but it is not a valid array.");
+      return [];
+
+    } catch (error) {
+      // 3. Catch structural JSON syntax errors gracefully
+      console.error("Failed to parse local storage 'employees' key safely:", error);
+      return [];
+    }
   });
   // 2. Write a useEffect to save 'employees' to localStorage whenever the array mutates.
   useEffect(() => {
