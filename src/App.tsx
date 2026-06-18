@@ -71,7 +71,10 @@ export default function App() {
     const jobTitle = formData.get('jobTitle') as string;
     const weightRaw = formData.get('weight') as string;
     const weight = parseFloat(weightRaw);
-    if (!name || !jobTitle || isNaN(weight) || weight < 0) {
+
+    console.log("DEBUG VALUES:", { name, jobTitle, weightRaw, weight });
+
+    if (!name || !jobTitle || isNaN(weight) || weight <= 0) {
       alert("Invalid inputs. Weight must be 0 or greater.");
       return;
     }
@@ -166,7 +169,7 @@ export default function App() {
               <form onSubmit={handleAddEmployee} className="space-y-4">
                 <input name="name" type="text" placeholder="Name" required className="w-full border border-gray-300 rounded p-2 text-sm" />
                 <input name="jobTitle" type="text" placeholder="Job Title (e.g., Server)" required className="w-full border border-gray-300 rounded p-2 text-sm" />
-                <input name="weight" type="number" min="0" step="1" placeholder="Share Weight (e.g., 100)" required className="w-full border border-gray-300 rounded p-2 text-sm" />
+                <input name="weight" type="number" min="0.01" step="0.01" placeholder="Share Weight (e.g., 100)" required className="w-full border border-gray-300 rounded p-2 text-sm" />
                 <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors">
                   + Add to Roster
                 </button>
