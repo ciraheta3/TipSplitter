@@ -16,7 +16,7 @@
 - [x] **Task 2.2: Local Storage Defensive Serialization (Type-Safety)**
   - *Threat:* Malformed or corrupted browser data triggers unhandled parsing exceptions on mount.
   - *Fix:* Refactor state initialization block with a explicit `try/catch` and array verification wrapper.
-- [ ] **Task 2.3: Floating-Point Rounding Defense (Cents Scaling Layer)**
+- [x] **Task 2.3: Floating-Point Rounding Defense (Cents Scaling Layer)**
   - *Threat:* Native binary arithmetic floating-point leaks fractional micro-pennies.
   - *Fix:* Refactor internal state calculations to operate entirely via integer cents ($Dollars \times 100$).
 

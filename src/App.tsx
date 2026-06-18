@@ -49,7 +49,8 @@ export default function App() {
 
   // TODO 1: Total Tip calculation
   // Constraint: Treat empty strings ('') as 0. 
-  const totalTip = (cashTip || 0) + (creditTip || 0);
+  // Convert to cents for precision arithmetic
+  const totalTipCents = Math.round(((cashTip || 0) + (creditTip || 0)) * 100);
 
   // TODO 2: Total Shares calculation
   // Formula: $TotalShares = \sum EmployeeWeights$
@@ -57,15 +58,16 @@ export default function App() {
 
   // TODO 3: Value Per Share calculation
   // Constraint: Prevent division by zero if totalShares is 0.
-  
-  const valuePerShare: number = totalShares > 0 ? totalTip / totalShares : 0; 
+  // Convert to cents for precision arithmetic
+  const valuePerShare: number = totalShares > 0 ? totalTipCents / totalShares : 0; 
 
   // TODO 4: Calculate Individual Employee Tips
   // Constraint: Apply the rounding rule based on the `roundToDollar` boolean state.
   // If false, round to 2 decimal places. If true, round to the nearest whole dollar.
+  // Convert to cents for precision arithmetic
   const getEmployeeCalculatedTip = (weight: number): number => {
-    const rawTip = valuePerShare * weight;
-    return roundToDollar ? Math.round(rawTip) : Number(rawTip.toFixed(2)); 
+    const rawTipCents = valuePerShare * weight;
+    return roundToDollar ? Math.round(rawTipCents / 100) * 100 : Math.round(rawTipCents);
   };
 
   // TODO 5: Sum of Paid Tips
@@ -74,7 +76,7 @@ export default function App() {
 
   // TODO 6: Variance Calculation
   // Formula: Total Tip minus Sum of Paid Tips.
-  const variance: number = totalTip - sumOfPaidTips; 
+  const variance: number = totalTipCents - sumOfPaidTips; 
 
   // --- STATE MUTATION HANDLERS ---
   
@@ -111,7 +113,7 @@ export default function App() {
 
   // --- VERIFICATION UI ---
   // The Variance Indicator will punish you mathematically if your rounding leaks pennies.
-  const isMathValid = totalTip >= sumOfPaidTips;
+  const isMathValid = totalTipCents >= sumOfPaidTips;
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-4 md:p-8 font-sans">
@@ -135,18 +137,18 @@ export default function App() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-4 bg-gray-100 rounded-lg border border-gray-200">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Tip</p>
-              <p className="text-3xl font-mono font-medium">${totalTip.toFixed(2)}</p>
+              <p className="text-3xl font-mono font-medium">${(totalTipCents / 100).toFixed(2)}</p>
             </div>
             <div className="p-4 bg-gray-100 rounded-lg border border-gray-200">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Sum of Paid Tips</p>
-              <p className="text-3xl font-mono font-medium">${sumOfPaidTips.toFixed(2)}</p>
+              <p className="text-3xl font-mono font-medium">${(sumOfPaidTips / 100).toFixed(2)}</p>
             </div>
             <div className={`p-4 rounded-lg border-2 transition-colors ${isMathValid ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'}`}>
               <p className={`text-xs font-bold uppercase tracking-wider ${isMathValid ? 'text-green-700' : 'text-red-700'}`}>
                 Variance Indicator
               </p>
               <p className={`text-3xl font-mono font-bold ${isMathValid ? 'text-green-600' : 'text-red-600'}`}>
-                ${Math.abs(variance).toFixed(2)}
+                ${Math.abs(variance / 100).toFixed(2)}
               </p>
             </div>
           </div>
@@ -215,7 +217,7 @@ export default function App() {
                     </div>
                     <div className="flex items-center space-x-4">
                       <p className="font-mono font-bold text-lg text-blue-700">
-                        ${getEmployeeCalculatedTip(emp.weight).toFixed(2)}
+                        ${(getEmployeeCalculatedTip(emp.weight) / 100).toFixed(2)}
                       </p>
                       <button 
                         onClick={() => handleRemoveEmployee(emp.id)}
