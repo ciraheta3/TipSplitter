@@ -23,6 +23,14 @@ npm run preview   # Serve the production build locally
 
 GitHub Actions runs install, tests, lint, and build on pull requests and pushes to main. Preserve the lockfile when updating dependencies.
 
+### VS Code Dev Container (macOS)
+
+Install Docker Desktop and the VS Code Dev Containers extension, then open this repository in VS Code. Run **Dev Containers: Rebuild and Reopen in Container** from the Command Palette to apply the Node 24 image (or **Reopen in Container** on first use). In the container terminal, run `node --version` to confirm Node 24, then `npm ci` and `npm run dev`.
+
+The container forwards Vite's port 5173. In VS Code's **Ports** panel, open the forwarded address in your Mac's browser (normally `http://localhost:5173`; use the displayed address if that local port is already occupied). The container sets `VITE_DEV_HOST=0.0.0.0` so Vite binds to its interfaces, while VS Code binds the forwarded host port to localhost. Outside the container, Vite defaults to localhost. No Docker host port publishing is needed. Port 5173 is fixed; stop any existing Vite process if it is occupied inside the container.
+
+The employee roster is stored in this browser's localStorage. Draft cash and credit inputs are **not persisted** and reset on reload; persistence for these inputs is deferred feature work.
+
 ## Calculation behavior (Issue #10)
 
 - Money parses directly into integer cents and weights scale to integer hundredths. Invalid, negative, non-finite, over-precision, or unsafe values produce visible errors rather than silent rounding. Blank cash/credit fields mean zero.

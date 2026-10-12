@@ -1,9 +1,22 @@
 {
     "name": "Tip-Calculator-Sandbox",
-    "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bullseye",
+    "image": "mcr.microsoft.com/devcontainers/typescript-node:24-bookworm",
     "remoteUser": "node",
+    "containerEnv": {
+      "VITE_DEV_HOST": "0.0.0.0"
+    },
+    "forwardPorts": [5173],
+    "portsAttributes": {
+      "5173": {
+        "label": "Vite development server",
+        "onAutoForward": "notify"
+      }
+    },
     "customizations": {
       "vscode": {
+        "settings": {
+          "remote.localPortHost": "localhost"
+        },
         "extensions": [
           "dbaeumer.vscode-eslint",
           "esbenp.prettier-vscode"
