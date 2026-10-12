@@ -23,6 +23,12 @@ npm run preview   # Serve the production build locally
 
 GitHub Actions runs install, tests, lint, and build on pull requests and pushes to main. Preserve the lockfile when updating dependencies.
 
+Issue #14 adds a closed PostgreSQL/Supabase roster schema foundation; the frontend
+still needs no backend services. With a local Docker daemon, run `npm run check:db`
+for disposable PostgreSQL migration, constraint and RLS checks. This also runs in a
+separate CI job. `npm run check` alone does not validate SQL. Design, reproducible
+commands, assumptions and verification limits are in [docs/BACKEND.md](docs/BACKEND.md).
+
 ### VS Code Dev Container (macOS)
 
 Install Docker Desktop and the VS Code Dev Containers extension, then open this repository in VS Code. Run **Dev Containers: Rebuild and Reopen in Container** from the Command Palette to apply the Node 24 image (or **Reopen in Container** on first use). In the container terminal, run `node --version` to confirm Node 24, then `npm ci` and `npm run dev`.

@@ -15,7 +15,16 @@
 - Validation and minimal existing-screen integration.
 - Automated engine tests, test/check scripts, PR CI, AGENTS.md, and aligned documentation.
 
-## Later work (not in PR 1; provisional order)
+## PR 3: secure roster schema foundation (Issue #14)
+
+- Organization-scoped roles and employees with exact default weights and same-tenant foreign keys.
+- Versioned transactional migrations, closed RLS/ACLs, disposable PostgreSQL checks and backend design documentation.
+- No runtime database connection; the existing frontend and local roster continue unchanged.
+
+## Later work (provisional order)
+
+Memberships, verified authentication and narrow tenant policies must be reviewed
+before introducing shared roster synchronization. See [docs/BACKEND.md](docs/BACKEND.md).
 
 1. Shared employees, independent lunch/dinner shifts, and weight override models.
 2. Early-departure and understaffing adjustments after simultaneous-adjustment rules are decided.
