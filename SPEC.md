@@ -1,22 +1,28 @@
-### 1. Core Math & Logic (Weighted Share System)
-* Cash Tips + Credit Tips = Total Tip
-* Total Shares = Sum of Employee Weights
-* Value Per Share = Total Tip / Total Shares
-* Employee Tip = Value Per Share * Employee Weight
+# Current engineering specification (PR 1 / Issue #10)
 
-### 2. Inputs and Outputs (with Edge Cases)
-* **Tip Inputs:** Cash Tip and Credit Tip must be numeric inputs >= 0. Empty inputs default to 0.
-* **Employee Inputs:** Ability to add/remove employees. Each employee requires a Name (string), Job Title (string), and Share Weight (numeric input >= 0, e.g., Server = 100, Busboy = 25).
-* **Data Persistence:** NO backend database. Use browser localStorage to save and load the employee roster and their weights.
+Product direction and open business decisions live in [docs/PRD.md](docs/PRD.md). This contract replaces the prototype's nearest-rounding and absolute-variance rules.
 
-### 3. Logic Constraints (Precision & Verification)
-* **Currency Formatting:** All calculated tips must be formatted in standard USD (e.g., $15.50).
-* **Rounding Rule:** Round all individual calculated tips to exactly 2 decimal places. 
-* **Rounding Toggle:** Provide a UI toggle to round individual tips to the nearest whole dollar instead.
-* **Verification Check:** The UI must display the Total Tip alongside the Sum of Paid Tips (the sum of all individual rounded employee tips).
-* **Variance Indicator:** Display the absolute mathematical difference between Total Tip and Sum of Paid Tips. The text must be Green if Total Tip >= Sum of Paid Tips, and Red if Total Tip < Sum of Paid Tips.
+## Calculation contract
 
-### 4. UI/UX Constraints
-* Mobile-first design.
-* Use pure Tailwind CSS via CDN or standard Vite installation (no heavy external component libraries like Material-UI).
-* Clean, high-contrast, single-page dashboard layout.
+`src/calculation.ts` is pure TypeScript with no React, storage, or network dependencies.
+
+- `parseTipInput` converts plain decimal text directly to integer cents. Empty cash/credit inputs mean zero. Negative, non-finite, malformed, exponent, and more-than-two-decimal values are rejected, not rounded.
+- `parseWeightInput` scales a displayed share by `WEIGHT_SCALE = 100`; e.g. 100 shares = 10,000 units and 0.25 shares = 25 units. Empty weights are invalid; zero individual weights are allowed.
+- Numeric money and weight-unit API inputs must be nonnegative safe integers. Collected/allocated totals and total weight units must also fit `Number.MAX_SAFE_INTEGER`; overflow is rejected. BigInt intermediates preserve exact multiplication/division even when their products exceed this range.
+- `sumTipCents` adds separately validated cash and credit cents. No floating-point dollar arithmetic is used.
+- `distributeTips(poolCents, participants, mode)` preserves participant order and requires nonempty unique IDs. With positive total weight `W` and weight `w`, exact-cent payout is `floor(poolCents * w / W)`. Whole-dollar payout is `100 * floor(poolCents * w / (100 * W))`.
+- Empty/all-zero rosters return `status: 'no-positive-weight'`, zero payouts, and the full pool as unassigned. No division occurs. Otherwise status is `allocated`; a zero-weight participant receives zero.
+- Every distribution returns the pool, payouts, total weight units, allocated cents, and signed remainder. `sum(payouts) + remainder = pool`, with `remainder >= 0`. Residual cents/dollars are never automatically awarded.
+- `reconcilePayouts` also audits externally supplied integer-cent payouts: `remainder = collected - allocated`. A negative result explicitly means overpayment; reconciliation does not change those payouts.
+- `formatCents` preserves the exact cent value and sign, including at the safe-integer boundary.
+
+## Screen and persistence
+
+- Keep the mobile-first Tailwind dashboard, cash + credit fields, roster add/remove, and `employees` localStorage key. Stored employee shape remains `{ id, name, jobTitle, weight }`, with numeric displayed weights; convert at the calculation boundary.
+- Reject unsafe/invalid stored weights visibly rather than silently changing them. Validate stored row shapes before rendering. Unreadable saved data is left untouched on mount; an explicit roster change saves the new roster. Storage failures show a warning while allowing session-only edits.
+- Label the toggle “Round down to whole dollar.” Display total collected tips, allocated tips, and a signed “Unassigned Remainder” with its meaning. Invalid inputs show errors and unavailable payouts, not plausible fallback numbers.
+- This is a preview. No finalization, actual payout history, adjustment logic, shared accounts, or backend exists. New rules must never be applied retroactively to future historical records.
+
+## Verification
+
+Run `npm test`, `npm run lint`, and `npm run build` (or `npm run check`). Tests cover required rounding examples, invalid inputs, empty/zero-weight pools, large integer products, signed overpayment, and money conservation. PR CI installs with `npm ci` and runs all three checks. Smoke-check add/remove, persistence, cash + credit, both payout modes, errors, and narrow mobile screens.

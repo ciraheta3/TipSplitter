@@ -1,0 +1,40 @@
+# Restaurant Tip Pool Manager
+
+## Product direction
+
+Help managers calculate weighted tip pools and reconcile collected tips with payouts. The eventual product will support shared employees, independent lunch/dinner shifts, role/employee/shift weight overrides, early-departure and understaffing adjustments, and secure shared accounts.
+
+True collected totals and actual payouts must remain accurate in internal ledgers. Any future simplified staff worksheet must be clearly identified as a baseline view, not a fiscal record.
+
+## PR 1: testable foundation (Issue #10)
+
+- Preserve React, TypeScript, Vite, Tailwind, and the single-screen cash + credit pool and local employee roster.
+- Extract a pure weighted calculation and signed reconciliation engine, with cents and scaled integer weights.
+- Offer cent-level payouts and floor-to-whole-dollar payouts. Floor each proportional share; record every residual cent as unassigned, without redistributing it.
+- Handle empty/zero-weight rosters without dividing by zero; reject invalid money and weights with visible feedback.
+- Add unit tests, PR CI, and concise engineering guidance. The screen is a calculation preview, not a finalized ledger.
+
+## Future milestones (sequencing remains provisional)
+
+1. Shared employee records and separate lunch/dinner shift models, with explicit override precedence.
+2. Early-departure and understaffing adjustments once their interaction rules are agreed.
+3. Finalization, historical payout records, and reconciliation after retention/editing rules are agreed.
+4. Secure shared accounts and synchronization; any reports or exports require separate scope.
+
+None of those later features is implemented in PR 1. No Supabase, authentication, network sync, adjustment redistribution, or print reports are added.
+
+## Open business decisions
+
+- **Leftovers:** Who receives residual cents/dollars, when, and how is that allocation recorded? PR 1 leaves them unassigned; it does not choose a recipient, tie-breaker, or carryover rule.
+- **Simultaneous adjustments:** How do early departure, understaffing, and multiple overrides interact? Define precedence, eligible recipients, combination order, caps, and whether adjustments change the pool or shares.
+- **Finalization:** Who can finalize, reopen, or correct a shift? Define required reconciliation, whether any unassigned amount is allowed, audit history, and immutable snapshot rules. A preview must never be presented as an actual payout record.
+- **Overrides and shifts:** Define role/employee/shift precedence and participation rules for employees in both lunch and dinner.
+- **Shared access:** Define account permissions and retention requirements before choosing external services or configuration.
+
+## Explicit PR 1 conventions to review
+
+- “Exact-cent” means floor to cent precision, not nearest-cent rounding or automatic largest-remainder allocation. $100 at 100:50 gives $66.66 and $33.33 with $0.01 unassigned. Whole-dollar mode gives $66 and $33 with $1 unassigned.
+- Zero individual weights are allowed (consistent with the original SPEC); an empty or all-zero roster leaves the full pool unassigned with an explicit status. It cannot finalize anything.
+- Money and displayed weights accept nonnegative plain decimals with at most two fractional digits. Extra precision, scientific notation, and unsafe amounts are rejected rather than silently rounded. This matches the original 0.01 input steps; higher weight precision needs a separate decision.
+
+[SPEC.md](../SPEC.md) defines the current engineering contract; this PRD defines product direction and open decisions. [ROADMAP.md](../ROADMAP.md) summarizes milestones.
