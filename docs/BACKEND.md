@@ -1,9 +1,10 @@
-# Secure roster foundation (Issue #14)
+# Roster schema and authorization (Issues #14 and #21)
 
 PostgreSQL provides exact numeric storage, foreign keys, transactions and row-level
 security (RLS). Supabase is the intended managed PostgreSQL/Auth platform for the
-future shared application. This PR adds portable SQL with Supabase API role names;
-it creates no hosted project, Auth integration, client SDK, API or frontend connection.
+future shared application. The migrations use Supabase API role names and reference
+its managed Auth identities.
+They create no hosted project, login flow, client SDK, API or frontend connection.
 The existing React application still uses its browser-local roster.
 
 ## Entities and tenant boundary
@@ -16,6 +17,7 @@ multi-location organizations would require an explicit schema/product decision.
 | --- | --- |
 | `public.organizations` | UUID tenant ID, nonblank trimmed name, creation/update timestamps. Names need not be globally unique. |
 | `public.job_roles` | UUID ID, required organization, configurable name and required default weight, active flag, timestamps. Role names are unique ignoring case within an organization using PostgreSQL `lower`; no fixed enum or predefined weights. |
+| `public.organization_memberships` | One `(organization_id, user_id)` primary key per restaurant/Auth identity, required `admin` or `closer` role, `is_active` revocation flag and database-managed timestamps. |
 | `public.employees` | UUID ID, required organization and default role, optional default weight override, active flag, timestamps. Duplicate employee names are allowed. Employees are roster records, not login accounts. |
 
 The composite foreign key `(organization_id, default_role_id)` references
@@ -62,41 +64,90 @@ Timestamps use `timestamptz` with statement-time defaults. A trigger preserves
 function uses invoker security and an empty search path. Timestamps are metadata,
 not a durable audit trail, conflict-resolution protocol or history ledger.
 
-## Access remains closed
+## V1 authorization model
 
-All three application tables enable **and force RLS**, with **zero policies**.
-The migration explicitly revokes all table privileges from `PUBLIC`, `anon`,
-`authenticated` and `service_role`, including possible Supabase default grants.
-It also revokes execution grants on the trigger function. No service-role grant,
-security-definer function or privileged API is introduced. RLS and table ACLs are
-separate defenses: both are tested.
+The forward migration `20261013090000_roster_authorization.sql` adds memberships
+and operation-specific RLS policies without rewriting the merged roster migration.
+All four tables enable **and force RLS**. Table ACLs and RLS are separate defenses.
 
-The SQL migration owner owns the database objects; this does not mean a closer or
-admin owns every restaurant's data. FORCE RLS covers ordinary table owners, but
-PostgreSQL superusers and `BYPASSRLS` roles remain privileged. Do not supply any
-privileged key to a browser or treat RLS as a boundary against database administrators.
-The local test superuser is used only to apply migrations and synthetic fixtures.
+| Operation within a restaurant | Active admin | Active closer | Anon / nonmember / revoked |
+| --- | --- | --- | --- |
+| Read organization, roles and employees | Allow | Allow | Deny |
+| Add/edit/activate/deactivate roles and employees | Allow | Allow | Deny |
+| Read own active membership | Allow | Allow | Deny |
+| Read other members, including inactive records | Allow | Deny | Deny |
+| Create/edit/revoke memberships or assign admin privileges | Deny; future trusted administration | Deny | Deny |
+| Create/rename/delete organizations | Deny | Deny | Deny |
+| Permanently delete roster records | Deny; use `is_active` | Deny; use `is_active` | Deny |
+| Change roster IDs or move records between restaurants | Deny | Deny | Deny |
 
-Future authorization must use verified Supabase Auth identities and explicit,
-active organization memberships. A guessed organization ID or a client-supplied
-JWT organization claim is insufficient. No membership or Auth dependency is modeled
-yet; without them there is no safe application access policy to add.
+`authenticated` receives SELECT on the four tables and **column-level** INSERT and
+UPDATE only on roster fields. Inserts supply the organization and editable fields;
+IDs and timestamps come from the database. Updates permit names, weights, employee
+default roles and active flags, never `id`, `organization_id` or timestamps. This
+prevents tenant reassignment even when a user belongs to both restaurants, which
+`USING` and `WITH CHECK` alone would allow. The existing same-organization role FK
+still applies. Organization and membership tables have no client write grants or
+write policies; no table has a DELETE policy. `PUBLIC`, `anon` and `service_role`
+have no table grants. No browser service key or client membership-management RPC
+is supplied. Database administrators remain trusted: superusers and `BYPASSRLS`
+roles bypass RLS, and future grant changes must preserve the column restrictions.
 
-Suggested next small PRs:
+Memberships reference the real Supabase-managed `auth.users(id)`; employees remain
+independent roster records, never login accounts. Policies use `auth.uid()` and an
+**active database membership for that row's restaurant**, ignoring tenant/role
+claims from clients. A valid session without membership grants nothing. Setting
+`is_active = false` removes access on the next statement even with the same session;
+revoking one restaurant leaves unrelated active memberships intact. Authorization
+uses current statement visibility, not an audit ledger or session invalidation.
 
-1. Agree account/invitation/admin permissions and implement membership records tied
-   to verified `auth.users` IDs. Add narrow operation-specific grants and policies
-   requiring membership in the row's organization. Test unauthenticated users,
-   nonmembers, two distinct tenants, revoked memberships, closer/admin write limits,
-   and attempts to change a row's tenant (`USING` **and** `WITH CHECK`). Decide whether
-   organization IDs become immutable for app users. Keep employee identities separate
-   from login accounts and avoid privileged paths to bypass these checks.
-2. Add shared roster access/sync after those policies are reviewed, with exact numeric
-   transport, validation and conflict behavior. Plan localStorage import explicitly;
-   never upload existing browser data automatically.
-3. Introduce shift participation and snapshots in separate work after unresolved
-   override/finalization/retention decisions are agreed. Preserve actual money and
-   historical payouts.
+### Private membership lookup
+
+Querying memberships from their own RLS policy would recurse. The sole elevated
+helper, `tipsplitter_private.membership_role(uuid)`, returns only the current
+`auth.uid()` caller's active role for a requested restaurant, or NULL. There is no
+arbitrary user argument or write path. It is STABLE, SECURITY DEFINER, has an empty
+`search_path`, fully qualified `public.organization_memberships`/`auth.uid()`
+references and a fixed `postgres` owner. The migration fails closed unless that
+trusted owner is superuser or has BYPASSRLS, necessary to read through FORCE RLS.
+Only `authenticated` gets schema USAGE and helper EXECUTE; nobody receives CREATE
+on this private schema. PUBLIC/anon/service_role execution is revoked. Keep
+`tipsplitter_private` **out of PostgREST's exposed schemas**; no elevated function
+is created in the exposed public schema. The existing timestamp trigger remains
+SECURITY INVOKER with client execution revoked.
+
+The trust boundary assumes Supabase verifies tokens and supplies `auth.uid()`
+through its authenticated request context. Never distribute database login
+credentials that let a client impersonate the API role or set raw JWT session
+variables. The disposable fixture simulates this context; it does not validate it.
+
+### Trusted provisioning and lifecycle
+
+This migration seeds no organizations, identities or memberships. Before eventual
+shared access, a secured manual/server administrative operation must verify a
+Supabase Auth account's actual UUID, create the intended restaurant through a
+trusted database identity, and explicitly insert its first admin membership. Never
+derive membership from submitted organization IDs, emails, user metadata or a
+self-selected role. This PR supplies no provisioning endpoint or invitation flow.
+Subsequent invitations, account recovery, role changes and revocation need a
+separately reviewed trusted administrative flow, authorization and audit design.
+Even an active admin cannot perform these operations through ordinary API access.
+
+Both membership FKs use ON DELETE RESTRICT. Auth-user deletion is blocked while
+any active **or inactive** membership remains: trusted account-erasure work must
+explicitly handle memberships first. It cannot cascade into employees or financial
+history. `is_active = false` retains the membership but is not an erasure/audit
+policy. There is no tenant-move API or client permanent deletion.
+
+Migrations are forward-only. Rollback means a reviewed compensating migration;
+to close access during an incident, first revoke authenticated roster grants
+(including column grants) and helper execution through a trusted operation. Dropping membership records/tables
+as a rollback would lose authorization metadata and must not be automated.
+
+Next work remains live Auth/API validation, trusted account administration and
+shared roster sync with exact numeric transport and explicit localStorage import.
+Shift participation, finalization/reopening, invitations and historical snapshots
+remain separate work. No financial logic or browser-local behavior changes here.
 
 ## Environments, migrations and verification
 
@@ -138,14 +189,19 @@ run. No ports, host directories, database URL, credentials or existing data are 
 the container has no network, stores its database in tmpfs and is removed on exit.
 The fixed password is a disposable local test value, never a hosted secret.
 
-`supabase/tests/bootstrap.sql` creates only simulated API roles/default ACLs in the
-disposable database. **Never apply it to a hosted project.** `roster.sql` tests real
-catalog RLS/ACL state, constraints on INSERT/UPDATE, cross-tenant references, exact
-weight bounds/precision/non-finite values, NULL vs zero, role flexibility, timestamps
-and restricted deletion. It tests denied client operations, then temporarily grants
-DML privileges to verify RLS still hides all rows and rejects inserts. All synthetic
-fixtures, claims and test grants roll back. SQL assertion failures fail CI. A separate
-database job supplements the unchanged Node 24 frontend checks.
+`supabase/tests/bootstrap.sql` creates simulated API roles/default ACLs plus a
+**test-only** `auth.users` table and `auth.uid()` reading synthetic session claims.
+**Never apply it to a hosted project.** The production migration neither creates
+nor alters Supabase-managed Auth objects. Both clean replays recreate public,
+private and test Auth schemas. `roster.sql` retains the prior schema, exact weight,
+NULL vs zero, FK and timestamp assertions. `authorization.sql` continues in the
+same transaction, exercising real ACL/RLS behavior for admins and closers in two
+restaurants, member-list visibility, anonymous/missing/unassigned identities,
+revocation with unchanged claims, mixed-role dual memberships, tenant/key changes,
+self-invitation/promotion/reactivation, deletion, helper replacement and search-path
+shadowing. Test-only
+extra grants isolate RLS INSERT/UPDATE checks from ACLs. Fixtures, claims and grants
+roll back. SQL failures fail the separate database CI job.
 
 These checks validate PostgreSQL SQL execution and database authorization, not the
 full hosted Supabase environment. Supabase Auth/JWT issuance, PostgREST behavior,
@@ -156,14 +212,8 @@ table/column ACLs, role inheritance and policies. Never use production credentia
 for this validation. If Docker is unavailable, report SQL as **not executed**; the
 frontend check is not a substitute.
 
-Verification on 2026-10-12: Node `24.19.0`, npm `11.9.0`; `npm ci` passed,
-`npm audit` reported zero vulnerabilities, and `npm run check` passed all 60 tests,
-lint and production build. `bash -n scripts/check-db.sh`, `git diff --check` and
-`npm run check:db` passed, including both clean replays on PostgreSQL `17.11`.
-The database image digest was
-`sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826`.
-No hosted Supabase, Auth/PostgREST or CLI-ledger checks were performed. Manual UI
-smoke checks were not repeated; there are no frontend source changes in this PR.
+Verification for Issue #21 is recorded in its PR. Hosted Supabase authentication,
+PostgREST and CLI-ledger integration have not been tested by this SQL harness.
 
 ## Lifecycle and open decisions
 
@@ -172,10 +222,11 @@ instead of cascading a tenant/role deletion into its roster. Active flags suppor
 retirement; neither flag nor timestamps implement audit, retention or erasure policy.
 No financial record can be inferred from this schema.
 
-Open product/security decisions are also tracked in [PRD.md](PRD.md): membership and
-admin capabilities for roughly 14 rotating closers; invitation/revocation and account
+Open product/security decisions are also tracked in [PRD.md](PRD.md): trusted account
+administration for roughly 14 rotating closers; invitations, audited revocation and account
 recovery; inactive-role behavior; whether changing an employee's default role retains
 or clears its override; shift-specific override precedence; tenant moves; retention,
 deletion, audit and backup requirements; offline/simultaneous-edit conflicts; and
 future deployment ownership. Early departure, understaffing, residual allocation,
-finalization and corrections remain undecided. This foundation settles none of them.
+finalization and corrections remain undecided. The V1 roster permission matrix above
+is approved; these later lifecycle and financial decisions remain open.

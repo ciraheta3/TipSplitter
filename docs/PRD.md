@@ -35,8 +35,9 @@ None of those later features is implemented in PR 1. No Supabase, authentication
 
 PostgreSQL/Supabase is the intended shared backend. [BACKEND.md](BACKEND.md) documents
 the tenant-scoped organizations, configurable job roles, employee defaults, exact
-weight constraints, migration checks and authorization plan. RLS and table ACLs
-leave application access closed; there are no policies or frontend database calls.
+weight constraints, migration checks and authorization plan. The original migration
+closed application access; Issue #21 adds verified
+per-restaurant memberships and roster policies. There are no frontend database calls.
 The browser-local roster and calculation behavior remain the current product.
 
 Roster conventions in this foundation: one organization represents one restaurant;
@@ -45,11 +46,14 @@ weight override inherits the role weight while zero is an explicit override.
 Defaults may change between shifts and are not historical snapshots. No role weights
 or real staff data are seeded.
 
-Additional open decisions before shared access:
+Approved V1 access and remaining decisions before shared access:
 
-- Which operations can rotating closers perform, and which require an admin? Define
-  verified memberships, invitations, revocation, recovery and tenant-move rules before
-  adding access policies. Employees need not be login users.
+- **Approved V1 roster access (Issue #21):** active admins and closers may read, add,
+  edit, activate and deactivate their own restaurant's employees and job roles.
+  Admins may read same-restaurant membership lists; closers see only their own active
+  membership. Clients cannot write memberships, move roster records between
+  restaurants or permanently delete them. Employees are separate from Auth users.
+  Account administration, invitations/recovery and shift finalization remain future work.
 - Can an inactive role remain/select as a default? Does changing a default role retain
   or clear an employee weight override? Define later shift override precedence explicitly.
 - Define roster retention, deletion, audit, backups, offline/simultaneous-edit behavior,

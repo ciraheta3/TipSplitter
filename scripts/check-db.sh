@@ -50,14 +50,14 @@ sql -c 'SELECT version();'
 # Replay twice on clean databases, not twice on an already migrated schema.
 for pass in 1 2; do
   if [[ "$pass" = 2 ]]; then
-    sql -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public; DROP ROLE anon, authenticated, service_role;'
+    sql -c 'DROP SCHEMA public CASCADE; DROP SCHEMA tipsplitter_private CASCADE; DROP SCHEMA auth CASCADE; CREATE SCHEMA public; DROP ROLE anon, authenticated, service_role;'
   fi
   sql < supabase/tests/bootstrap.sql
   for migration in supabase/migrations/*.sql; do
     echo "Applying $migration (clean replay $pass)"
     sql < "$migration"
   done
-  sql < supabase/tests/roster.sql
+  cat supabase/tests/roster.sql supabase/tests/authorization.sql | sql
 done
 
-echo 'Database checks passed: two clean migration replays, constraints, timestamps, ACLs and deny-by-default RLS.'
+echo 'Database checks passed: two clean migration replays, constraints, timestamps, ACLs and membership-scoped RLS.'

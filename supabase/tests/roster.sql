@@ -145,60 +145,7 @@ SELECT pg_temp.assert_true(
    WHERE n.nspname = 'public' AND c.relname IN ('organizations', 'job_roles', 'employees')),
   'all roster tables enable and force RLS');
 SELECT pg_temp.assert_true(
-  NOT EXISTS (SELECT FROM pg_policies WHERE schemaname = 'public'
-    AND tablename IN ('organizations', 'job_roles', 'employees')), 'no access policies');
-SELECT pg_temp.assert_true(
   (SELECT NOT prosecdef AND proconfig = ARRAY['search_path=""'] FROM pg_proc
    WHERE oid = 'public.set_roster_timestamps()'::regprocedure), 'timestamp function is invoker with an empty search path');
 
-DO $$
-DECLARE role_name text; table_name text;
-BEGIN
-  FOREACH role_name IN ARRAY ARRAY['anon', 'authenticated', 'service_role'] LOOP
-    FOREACH table_name IN ARRAY ARRAY['organizations', 'job_roles', 'employees'] LOOP
-      PERFORM pg_temp.assert_true(NOT has_table_privilege(role_name, 'public.' || table_name,
-        'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'), role_name || ' has no table grants');
-    END LOOP;
-    PERFORM pg_temp.assert_true(NOT has_function_privilege(role_name, 'public.set_roster_timestamps()', 'EXECUTE'),
-      role_name || ' cannot call timestamp function');
-    EXECUTE format('SET LOCAL ROLE %I', role_name);
-    PERFORM pg_temp.expect_error('SELECT * FROM public.organizations', '42501', role_name || ' denied by ACL');
-    PERFORM pg_temp.expect_error($q$INSERT INTO public.organizations (name) VALUES ('Denied')$q$, '42501', role_name || ' denied INSERT');
-    PERFORM pg_temp.expect_error('UPDATE public.employees SET is_active = false', '42501', role_name || ' denied UPDATE');
-    PERFORM pg_temp.expect_error('DELETE FROM public.job_roles', '42501', role_name || ' denied DELETE');
-    PERFORM pg_temp.expect_error('TRUNCATE public.employees', '42501', role_name || ' denied TRUNCATE');
-    RESET ROLE;
-  END LOOP;
-END;
-$$;
-
--- Test RLS independently of ACLs: these grants exist only in this rolled-back test.
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.organizations, public.job_roles, public.employees TO anon, authenticated;
-SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000009999","organization_id":"00000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
-DO $$
-DECLARE role_name text; table_name text; visible bigint; affected bigint; insert_command text;
-BEGIN
-  FOREACH role_name IN ARRAY ARRAY['anon', 'authenticated'] LOOP
-    EXECUTE format('SET LOCAL ROLE %I', role_name);
-    FOREACH table_name IN ARRAY ARRAY['organizations', 'job_roles', 'employees'] LOOP
-      EXECUTE format('SELECT count(*) FROM public.%I', table_name) INTO visible;
-      PERFORM pg_temp.assert_true(visible = 0, role_name || ' RLS hides all ' || table_name);
-      EXECUTE format('UPDATE public.%I SET name = ''RLS forbidden''', table_name);
-      GET DIAGNOSTICS affected = ROW_COUNT;
-      PERFORM pg_temp.assert_true(affected = 0, role_name || ' RLS prevents UPDATE of ' || table_name);
-      EXECUTE format('DELETE FROM public.%I', table_name);
-      GET DIAGNOSTICS affected = ROW_COUNT;
-      PERFORM pg_temp.assert_true(affected = 0, role_name || ' RLS prevents DELETE of ' || table_name);
-      insert_command := CASE table_name
-        WHEN 'organizations' THEN $q$INSERT INTO public.organizations (name) VALUES ('RLS forbidden')$q$
-        WHEN 'job_roles' THEN $q$INSERT INTO public.job_roles (organization_id, name, default_weight) VALUES ('00000000-0000-0000-0000-000000000001', 'RLS forbidden', 1)$q$
-        ELSE $q$INSERT INTO public.employees (organization_id, name, default_role_id) VALUES ('00000000-0000-0000-0000-000000000001', 'RLS forbidden', '00000000-0000-0000-0000-000000001001')$q$ END;
-      PERFORM pg_temp.expect_error(insert_command, '42501', role_name || ' RLS prevents INSERT into ' || table_name);
-    END LOOP;
-    RESET ROLE;
-  END LOOP;
-END;
-$$;
-
-ROLLBACK;
-\echo 'Roster assertions passed; all fixtures and test-only grants rolled back.'
+-- Authorization assertions continue in the same psql session/transaction.
