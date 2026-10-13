@@ -1,10 +1,29 @@
-# TipSplitter / Restaurant Tip Pool Manager
+# TipSplitter
 
-A React + TypeScript + Vite dashboard for previewing weighted tip allocations. Cash and credit tips form one pool; the employee roster remains local to this browser through localStorage. Product direction and open decisions are in [docs/PRD.md](docs/PRD.md); the current calculation contract is in [SPEC.md](SPEC.md) and milestones in [ROADMAP.md](ROADMAP.md).
+TipSplitter helps restaurant managers preview how a pooled cash and credit tip total is split among employees using share weights. The current application is a browser-local calculator; the product direction is a shared shift-management application with auditable payout history.
 
-## Develop and verify
+## Current features
 
-Use Node.js 24 LTS (the CI version; current Vite requires at least Node 20.19 or 22.12).
+- Cash and credit entry combined into one tip pool, with blank inputs treated as zero.
+- Employee roster with names, job titles, share weights, and add/remove controls, saved in this browser's localStorage.
+- Integer-cent-safe weighted allocation, with payouts floored to cents or whole dollars.
+- Total collected, allocated payouts, and an explicitly unassigned remainder. Residual money is never automatically redistributed.
+- Visible validation for invalid amounts, weights, and saved roster data; storage failures allow session-only roster edits.
+- Responsive dashboard. Zero individual weights are allowed; an empty or all-zero roster leaves the entire pool unassigned.
+
+For a $100.00 pool with weights 100:50, cent mode previews $66.66 and $33.33 with $0.01 unassigned. Whole-dollar mode previews $66 and $33 with $1.00 unassigned. These are allocation previews, not records of actual payments.
+
+## Architecture and stack
+
+The client uses React 19, TypeScript 6, Vite 8, and Tailwind CSS 4. [src/App.tsx](src/App.tsx) handles the dashboard, input state, and browser-local roster storage. The pure TypeScript engine in [src/calculation.ts](src/calculation.ts) parses money into integer cents, scales weights to integer hundredths, and uses BigInt intermediates for exact proportional arithmetic and signed reconciliation.
+
+Vitest runs 75 automated tests: 60 calculation tests and 15 frontend interface tests using React Testing Library, user-event, jest-dom, and jsdom; ESLint and TypeScript check the source. GitHub Actions runs tests, lint, and the production build on pull requests and pushes to `main`.
+
+A PostgreSQL roster schema is implemented in versioned migrations, with organization-scoped roles and employees, exact weights, same-tenant constraints, and deny-by-default RLS and table privileges. Application access remains closed: there is no live Supabase integration, authentication, or frontend database connection. See [backend design and verification](docs/BACKEND.md). A separate CI job checks the database schema.
+
+## Development
+
+Use Node.js 24 LTS and npm, matching CI and the Dev Container.
 
 ```bash
 git clone https://github.com/ciraheta3/tip-calculator.git
@@ -13,54 +32,39 @@ npm ci
 npm run dev
 ```
 
+Open `http://localhost:5173`. The development server uses a fixed port; stop any existing process on 5173 before starting it.
+
 ```bash
-npm test          # Vitest engine tests, runs once
-npm run lint      # ESLint
-npm run build     # TypeScript check + production bundle in dist/
-npm run check     # All three checks
-npm run preview   # Serve the production build locally
+npm run check    # All 75 tests, ESLint, TypeScript, and production build
+npm run build    # Production bundle in dist/
+npm run preview  # Serve the production build locally
 ```
 
-GitHub Actions runs install, tests, lint, and build on pull requests and pushes to main. Preserve the lockfile when updating dependencies.
+The frontend needs no backend services or credentials. With Bash and a running local Docker daemon, `npm run check:db` runs disposable PostgreSQL migration, constraint, and RLS checks. These are separate from `npm run check`, which does not validate SQL. See [docs/BACKEND.md](docs/BACKEND.md) for prerequisites, commands, and verification limits.
 
-Issue #14 adds a closed PostgreSQL/Supabase roster schema foundation; the frontend
-still needs no backend services. With a local Docker daemon, run `npm run check:db`
-for disposable PostgreSQL migration, constraint and RLS checks. This also runs in a
-separate CI job. `npm run check` alone does not validate SQL. Design, reproducible
-commands, assumptions and verification limits are in [docs/BACKEND.md](docs/BACKEND.md).
+### VS Code Dev Container
 
-### VS Code Dev Container (macOS)
+Install Docker Desktop and the VS Code Dev Containers extension, then open the repository in VS Code. Select **Dev Containers: Reopen in Container**, or **Rebuild and Reopen in Container** after configuration changes. The [container configuration](.devcontainer/devcontainer.json) uses Node 24; run `npm ci` and `npm run dev` in its terminal.
 
-Install Docker Desktop and the VS Code Dev Containers extension, then open this repository in VS Code. Run **Dev Containers: Rebuild and Reopen in Container** from the Command Palette to apply the Node 24 image (or **Reopen in Container** on first use). In the container terminal, run `node --version` to confirm Node 24, then `npm ci` and `npm run dev`.
+Vite binds to `0.0.0.0` inside the container through `VITE_DEV_HOST`; outside it, Vite defaults to localhost. VS Code forwards port 5173 to localhost on your host. Open the address shown in the **Ports** panel (normally `http://localhost:5173`); no Docker host port publishing is needed.
 
-The container forwards Vite's port 5173. In VS Code's **Ports** panel, open the forwarded address in your Mac's browser (normally `http://localhost:5173`; use the displayed address if that local port is already occupied). The container sets `VITE_DEV_HOST=0.0.0.0` so Vite binds to its interfaces, while VS Code binds the forwarded host port to localhost. Outside the container, Vite defaults to localhost. No Docker host port publishing is needed. Port 5173 is fixed; stop any existing Vite process if it is occupied inside the container.
+## Limitations and direction
 
-The employee roster is stored in this browser's localStorage. Draft cash and credit inputs are **not persisted** and reset on reload; persistence for these inputs is deferred feature work.
+- Rosters are local to one browser, with no shared login, roster synchronization, or cloud storage. Cash and credit draft inputs reset on refresh.
+- No lunch/dinner shift records, finalization, immutable history, or actual payout ledger exist. Preview allocations must not be treated as historical payments.
+- Adjustments, automatic leftover allocation, reports, exports, and offline synchronization are not implemented. Money and weights accept nonnegative plain decimals with at most two fractional digits; invalid or unsafe values are rejected rather than rounded.
 
-## Calculation behavior (Issue #10)
+Future work includes tenant-scoped access, shared rosters, separate shifts, immutable payout history, adjustments and reconciliation, reporting/export, and eventual offline capabilities. Sequencing and business rules remain provisional. [ROADMAP.md](ROADMAP.md) records the merged calculation, development environment, roster schema, and interface-testing milestones alongside future work.
 
-- Money parses directly into integer cents and weights scale to integer hundredths. Invalid, negative, non-finite, over-precision, or unsafe values produce visible errors rather than silent rounding. Blank cash/credit fields mean zero.
-- Cent mode floors each proportional payout to the nearest lower cent. At weights 100 and 50, $100.00 allocates $66.66 and $33.33, leaving $0.01 unassigned. A $0.02 pool with three equal weights allocates $0.00 each and leaves $0.02.
-- “Round down to whole dollar” floors payouts to dollars: the same $100.00 pool pays $66 and $33, leaving $1.00. This replaces the prototype's nearest-dollar rounding.
-- Remainder is **collected minus allocated**, displayed with its sign. Positive means unassigned; negative would mean overpaid. The allocation engine cannot overpay. Leftovers are recorded without choosing a recipient or distributing pennies automatically.
-- Zero individual weights are supported. With no participants or no positive weights, all tips stay unassigned and the screen explains why.
-- The roster key/shape is compatible with the prototype. Malformed stored rows and invalid weights are reported. Unreadable saved data is not overwritten on mount; an explicit roster change saves a new roster. If browser storage fails, edits remain available only for the session.
+## Project documentation
 
-The dashboard is a **calculation preview**, not evidence of actual payouts or a finalized ledger. PR 1 adds no backend, authentication, synchronization, adjustments, history, or reports. Leftover policy, simultaneous adjustments, override precedence, and finalization rules remain open in the PRD.
+- [Roadmap](ROADMAP.md): completed milestones, proposals, and future work.
+- [Product requirements](docs/PRD.md): product direction and unresolved business decisions.
+- [Calculation specification](SPEC.md): current allocation and persistence contract.
+- [Backend foundation](docs/BACKEND.md): schema, access boundaries, migration checks, and future integration requirements.
+- [Interface tests](docs/UI-TESTS.md): test commands, coverage, limitations, and browser smoke checks.
+- [Contribution guidance](AGENTS.md): repository engineering and verification requirements.
 
-## Engineering
+## License
 
-The pure engine is in `src/calculation.ts`; tests in `src/calculation.test.ts` cover rounding, invalid input, signed reconciliation, and conservation at small and large integer boundaries. UI/storage concerns remain in `src/App.tsx`. Contribution guidance is in [AGENTS.md](AGENTS.md).
-
-Before handing off a change, run all checks and smoke-check mobile add/remove, roster persistence, cash + credit totals, both payout modes, and invalid-input feedback. Use synthetic employees for examples and tests.
-
----
-
-## 📄 License & Terms
-This project is proprietary and is protected under a private ownership license. Unauthorized copying, distribution, or modification of this source code via any medium is strictly prohibited.
-
----
-
-## 👤 Author
-**Carlos Iraheta** 📩 carlosiraheta543@gmail.com  
-[Portfolio Link] | [LinkedIn]
+This project is proprietary. Unauthorized copying, distribution, or modification is prohibited.
