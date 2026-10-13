@@ -121,15 +121,15 @@ export default function App() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 bg-gray-100 rounded-lg border border-gray-200">
+            <div role="group" aria-label="Total Tip" className="p-4 bg-gray-100 rounded-lg border border-gray-200">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Tip</p>
               <p className="text-3xl break-all font-mono font-medium">{money(totalTipCents)}</p>
             </div>
-            <div className="p-4 bg-gray-100 rounded-lg border border-gray-200">
+            <div role="group" aria-label="Allocated Tips" className="p-4 bg-gray-100 rounded-lg border border-gray-200">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Allocated Tips</p>
               <p className="text-3xl break-all font-mono font-medium">{money(calculation?.allocatedCents)}</p>
             </div>
-            <div className={`p-4 rounded-lg border-2 transition-colors ${isMathValid ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'}`}>
+            <div role="group" aria-label="Unassigned Remainder" className={`p-4 rounded-lg border-2 transition-colors ${isMathValid ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'}`}>
               <p className={`text-xs font-bold uppercase tracking-wider ${isMathValid ? 'text-green-700' : 'text-red-700'}`}>
                 Unassigned Remainder
               </p>
@@ -203,7 +203,7 @@ export default function App() {
             ) : (
               <div className="space-y-3">
                 {employees.map(emp => (
-                  <div key={emp.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-gray-50 border border-gray-100 rounded">
+                  <div key={emp.id} role="group" aria-label={`Employee ${emp.name}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-gray-50 border border-gray-100 rounded">
                     <div className="min-w-0 break-words">
                       <p className="font-bold">{emp.name} <span className="text-xs text-gray-500 font-normal bg-gray-200 px-2 py-1 rounded ml-2">{emp.jobTitle}</span></p>
                       <p className="text-sm text-gray-600 mt-1">Weight: {emp.weight}</p>

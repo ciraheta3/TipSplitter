@@ -21,3 +21,13 @@ jobs:
       - run: npm test
       - run: npm run lint
       - run: npm run build
+
+  database:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # Uses only a disposable local PostgreSQL container; no project credentials.
+      - run: npm run check:db

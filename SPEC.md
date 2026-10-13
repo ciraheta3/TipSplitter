@@ -21,8 +21,13 @@ Product direction and open business decisions live in [docs/PRD.md](docs/PRD.md)
 - Keep the mobile-first Tailwind dashboard, cash + credit fields, roster add/remove, and `employees` localStorage key. Stored employee shape remains `{ id, name, jobTitle, weight }`, with numeric displayed weights; convert at the calculation boundary.
 - Reject unsafe/invalid stored weights visibly rather than silently changing them. Validate stored row shapes before rendering. Unreadable saved data is left untouched on mount; an explicit roster change saves the new roster. Storage failures show a warning while allowing session-only edits.
 - Label the toggle “Round down to whole dollar.” Display total collected tips, allocated tips, and a signed “Unassigned Remainder” with its meaning. Invalid inputs show errors and unavailable payouts, not plausible fallback numbers.
-- This is a preview. No finalization, actual payout history, adjustment logic, shared accounts, or backend exists. New rules must never be applied retroactively to future historical records.
+- This is a preview. No finalization, actual payout history, adjustment logic, shared accounts, or runtime backend connection exists. Issue #14 adds only the closed roster schema described in [docs/BACKEND.md](docs/BACKEND.md). New rules must never be applied retroactively to future historical records.
 
 ## Verification
 
 Run `npm test`, `npm run lint`, and `npm run build` (or `npm run check`). Tests cover required rounding examples, invalid inputs, empty/zero-weight pools, large integer products, signed overpayment, and money conservation. PR CI installs with `npm ci` and runs all three checks. Smoke-check add/remove, persistence, cash + credit, both payout modes, errors, and narrow mobile screens.
+
+Issue #14 schema verification is separate: `npm run check:db` executes SQL migrations
+and assertions in disposable local PostgreSQL 17, with no hosted credentials. The
+frontend checks do not validate migrations. See [docs/BACKEND.md](docs/BACKEND.md)
+for exact weight storage, tenant constraints, deny-by-default access and limitations.

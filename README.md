@@ -17,7 +17,9 @@ For a $100.00 pool with weights 100:50, cent mode previews $66.66 and $33.33 wit
 
 The client uses React 19, TypeScript 6, Vite 8, and Tailwind CSS 4. [src/App.tsx](src/App.tsx) handles the dashboard, input state, and browser-local roster storage. The pure TypeScript engine in [src/calculation.ts](src/calculation.ts) parses money into integer cents, scales weights to integer hundredths, and uses BigInt intermediates for exact proportional arithmetic and signed reconciliation.
 
-Vitest covers the calculation engine; ESLint and TypeScript check the source. GitHub Actions runs tests, lint, and the production build on pull requests and pushes to `main`. There is no live backend connection.
+Vitest runs 75 automated tests: 60 calculation tests and 15 frontend interface tests using React Testing Library, user-event, jest-dom, and jsdom; ESLint and TypeScript check the source. GitHub Actions runs tests, lint, and the production build on pull requests and pushes to `main`.
+
+A PostgreSQL roster schema is implemented in versioned migrations, with organization-scoped roles and employees, exact weights, same-tenant constraints, and deny-by-default RLS and table privileges. Application access remains closed: there is no live Supabase integration, authentication, or frontend database connection. See [backend design and verification](docs/BACKEND.md). A separate CI job checks the database schema.
 
 ## Development
 
@@ -33,10 +35,12 @@ npm run dev
 Open `http://localhost:5173`. The development server uses a fixed port; stop any existing process on 5173 before starting it.
 
 ```bash
-npm run check    # Engine tests, ESLint, TypeScript, and production build
+npm run check    # All 75 tests, ESLint, TypeScript, and production build
 npm run build    # Production bundle in dist/
 npm run preview  # Serve the production build locally
 ```
+
+The frontend needs no backend services or credentials. With Bash and a running local Docker daemon, `npm run check:db` runs disposable PostgreSQL migration, constraint, and RLS checks. These are separate from `npm run check`, which does not validate SQL. See [docs/BACKEND.md](docs/BACKEND.md) for prerequisites, commands, and verification limits.
 
 ### VS Code Dev Container
 
@@ -50,13 +54,15 @@ Vite binds to `0.0.0.0` inside the container through `VITE_DEV_HOST`; outside it
 - No lunch/dinner shift records, finalization, immutable history, or actual payout ledger exist. Preview allocations must not be treated as historical payments.
 - Adjustments, automatic leftover allocation, reports, exports, and offline synchronization are not implemented. Money and weights accept nonnegative plain decimals with at most two fractional digits; invalid or unsafe values are rejected rather than rounded.
 
-Future work includes tenant-scoped access, shared rosters, separate shifts, immutable payout history, adjustments and reconciliation, reporting/export, and eventual offline capabilities. Sequencing and business rules remain provisional. [ROADMAP.md](ROADMAP.md) separates merged milestones from open proposals, including PRs #15 and #17.
+Future work includes tenant-scoped access, shared rosters, separate shifts, immutable payout history, adjustments and reconciliation, reporting/export, and eventual offline capabilities. Sequencing and business rules remain provisional. [ROADMAP.md](ROADMAP.md) records the merged calculation, development environment, roster schema, and interface-testing milestones alongside future work.
 
 ## Project documentation
 
 - [Roadmap](ROADMAP.md): completed milestones, proposals, and future work.
 - [Product requirements](docs/PRD.md): product direction and unresolved business decisions.
 - [Calculation specification](SPEC.md): current allocation and persistence contract.
+- [Backend foundation](docs/BACKEND.md): schema, access boundaries, migration checks, and future integration requirements.
+- [Interface tests](docs/UI-TESTS.md): test commands, coverage, limitations, and browser smoke checks.
 - [Contribution guidance](AGENTS.md): repository engineering and verification requirements.
 
 ## License
