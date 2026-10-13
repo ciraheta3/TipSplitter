@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local scratch and credentials; integration keys exist only at runtime.
+/work/
+.env
+.env.*
+supabase/signing_keys*.json
