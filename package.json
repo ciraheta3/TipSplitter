@@ -12,7 +12,8 @@
     "check": "npm test && npm run lint && npm run build",
     "check:db": "bash scripts/check-db.sh",
     "supabase:local": "node scripts/supabase-local.mjs",
-    "check:supabase": "node scripts/check-supabase.mjs"
+    "check:supabase": "node scripts/check-supabase.mjs",
+    "check:hosted-preflight": "node --test --test-isolation=none scripts/hosted-supabase-tests.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.1",

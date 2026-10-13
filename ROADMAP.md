@@ -17,17 +17,20 @@ These milestones provide a browser-local calculation preview and a closed databa
 
 ## In progress / proposed
 
-Issue #21 adds verified per-restaurant memberships and authorization: active admins
-and closers can maintain their own roster, with no client membership administration
-or tenant moves. Live Auth, synchronization and account administration remain future
-work; this backend foundation awaits independent PR review.
+Membership authorization merged in PR #22, and the real local Supabase Auth/PostgREST
+workflow merged in PR #24 (owner-reported full Mac pass). Issue #25 prepares the
+first isolated hosted DEV environment with [manual owner setup](docs/HOSTED-DEV.md)
+and opt-in synthetic verification. Hosted checks remain **unexecuted**. Frontend
+login, synchronization, invitations and trusted account administration remain future work.
 
 ## Planned
 
 No delivery dates are committed. Each milestone requires separate scope and review:
 
-1. **Memberships and authentication:** establish verified restaurant membership and permissions, with narrowly tested tenant-scoped RLS before enabling shared data access. The PostgreSQL roster schema exists; Issue #21 supplies membership-based policies for review. Live Supabase integration
-   and trusted account administration remain unimplemented. See [docs/BACKEND.md](docs/BACKEND.md).
+1. **Hosted authorization and authentication:** complete owner-approved hosted DEV
+   verification before enabling shared data access. Membership-based RLS and local
+   Auth/PostgREST checks exist; frontend authentication and trusted account
+   administration remain unimplemented. See [docs/BACKEND.md](docs/BACKEND.md).
 2. **Shared roster:** connect the implemented employee/role schema to the frontend, with exact weight transport, weight inheritance/overrides, localStorage import, and synchronization after access and conflict rules are defined.
 3. **Shifts and immutable history:** model independent lunch/dinner participation, finalization, and immutable snapshots of collected totals and actual payouts; define corrections and audit history before implementation.
 4. **Adjustments and reconciliation:** support early departure and understaffing after interaction rules are agreed; preserve true collected totals and recorded payouts.

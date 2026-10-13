@@ -328,44 +328,64 @@ Vendor references checked for the pinned workflow: [CLI installation/versioning]
 [managed database roles](https://supabase.com/docs/guides/database/postgres/roles).
 The installed CLI's `start`, `db reset` and `migration list --help` were also checked.
 
-### Future isolated hosted DEV/STAGING verification
+### Isolated hosted DEV preparation (Issue #25)
 
-**hosted integration not tested**. This issue does not authorize hosted deployment
-or access to production. Local success cannot establish hosted inherited/default
-grants, role ownership, network exposure, backups or restore behavior.
+The [owner setup and hosted verification guide](HOSTED-DEV.md) provides dedicated
+non-production project creation, separate approval gates, ledger-aware migration
+commands, trusted synthetic provisioning, opt-in HTTP verification, independent
+database comparison and narrowly scoped manual cleanup. Hosted access is **not
+authorized by this preparation**. No hosted project has been accessed or modified.
 
-Before future hosted verification, a project owner must:
+| Verification layer | Evidence | Current status |
+| --- | --- | --- |
+| Frontend | `npm run check`: tests, lint, TypeScript/build | Existing regression workflow; no database evidence |
+| Simulated PostgreSQL | `npm run check:db`: two clean replays, constraints, RLS and effective ACLs with mock Auth claims | Previously passed; run-specific limitations recorded below |
+| Real local Supabase | `npm run check:supabase`: real Auth/PostgREST, managed roles, CLI migration ledger | Owner reports full Mac/Docker Desktop suite passed in merged PR #24; historical Cloud limitations below remain distinct |
+| Hosted safety preflight | `npm run check:hosted-preflight`: offline identity/key/file/CI guards and mocked transport failure checks | Local checks only; does not establish hosted permissions |
+| Hosted DEV | Dashboard/ledger/catalog audits, approved synthetic HTTP suite, trusted persisted-row comparison | **Not executed**; pending owner-created and explicitly approved project |
 
-1. Create a separately owned, isolated DEV/STAGING Supabase project with no production
-   records, integrations, credentials or employee information. Agree project ownership,
-   billing, network access and deletion responsibilities; store secrets in an approved
-   secret manager, never Git or frontend assets. Set explicit exposed API schemas to
-   `public` and verify `auth`/`tipsplitter_private` are excluded.
-2. Record server/service versions, managed role flags/inheritance, schema/function
-   owners, default ACLs and effective table/column privileges. Verify the helper's
-   postgres owner can read through FORCE RLS and call real auth.uid. Preserve custom
-   service_role revokes: BYPASSRLS alone is not an application-table grant. A mismatch
-   must fail closed and receive review before any permission correction.
-3. Take a backup and prove a restore procedure in isolation **before** migration;
-   agree a rollback/incident plan, including revoking column grants and helper
-   execution. Destructive table/membership deletion is not rollback. Obtain approval
-   for the exact project and complete ordered migration/application plan, then apply
-   once through an approved ledger-aware process. Never use the simulated bootstrap
-   or automatically replay this local destructive runner against a remote URL.
-4. Provision synthetic Auth accounts and two fictional restaurants through an
-   approved restricted administration procedure. Repeat the local HTTP permission
-   matrix using genuine hosted sessions (including revocation with the same token),
-   compare exact row sets and stored records, inspect ACL/RLS catalogs and schema
-   exposure, and verify ordinary admins/closers cannot administer accounts. Keep all
-   hosted secrets out of logs. Separately test email confirmation, recovery, token
-   refresh/expiry and invitations under the approved account-lifecycle design.
-5. Record actual executed results and remaining gaps; independently review all
-   permission changes. Verify backup/restore, cleanup and retention. Remove synthetic
-   memberships before deleting Auth users (the RESTRICT FK intentionally blocks
-   implicit deletion), then remove fixture data/project through approved actions.
-   Production rollout requires its own authorization and review.
+`node scripts/hosted-supabase.mjs plan` and `prepare CONFIG` are offline.
+`verify CONFIG` is a separate interactive opt-in command requiring explicit project
+and mutation approval; it uses only publishable/anon keys and genuine user sessions.
+Privileged account/fixture/revocation/database operations remain manual. It never
+imports or bypasses the named local harness, resets a hosted database, pushes a
+migration, or cleans up on exit. Synthetic config/passwords/SQL artifacts live in
+owner-only ignored `work/` files; session tokens remain in memory. Read the full
+guide before creating any accounts or running generated SQL.
 
-### Execution results
+The guide distinguishes the empty DEV rebuild plan from projects needing a secured
+backup and tested restore before migration. Production rollout, account lifecycle
+flows and backup restoration remain separate work requiring separate approval.
+Never widen authorization to resolve a hosted compatibility mismatch.
+
+### Preparation validation (Issue #25)
+
+Codex Cloud, 2026-10-13, Node `24.19.0`, npm `11.9.0`:
+
+- `npm ci` and `npm audit`: passed; zero reported vulnerabilities.
+- `npm run check`: passed all 75 frontend tests, ESLint and production build.
+  A concurrent image-extraction run caused one 5-second UI-test timeout; no test
+  expectation or timeout was changed, and the suite was rerun after that attempt.
+- `npm run check:db`: passed both clean replays on PostgreSQL `17.11`.
+- `npm run check:hosted-preflight`: seven offline guard/SQL-quoting/mocked-transport
+  checks passed. These tests never connect to Supabase.
+- Generated setup, nonempty-fixture refusal, revocation, exact persisted comparison
+  and mismatch rejection, and scoped cleanup were executed successfully in another
+  disposable PostgreSQL container with **mock Auth only**. This verifies SQL syntax
+  and local behavior, not hosted managed-role/Auth compatibility.
+- Node syntax, Bash syntax and diff checks passed. Pinned CLI `db push` and
+  `migration list` help confirmed the documented flags, including `--skip-vault`.
+- `npm run check:supabase`: attempted, startup hit its ten-minute timeout before
+  `ghcr.io/supabase/postgres:17.11.0.004` became available. The `vfs`/32 GB filesystem
+  reached 29 GB used during extraction. Cleanup completed, no containers remained,
+  and no full-stack Auth/PostgREST assertions ran. This is not a local integration
+  pass; the owner-reported Mac pass from PR #24 is separate evidence.
+- **Hosted DEV not executed**: no project creation, connection, link, migration
+  push, Auth provisioning, HTTP verification, database audit or cleanup was done
+  against a hosted project. The complete new hosted workflow, publishable-key/API
+  behavior, managed catalogs, email lifecycle and backup/restore remain unverified.
+
+### Historical execution results (PR #24)
 
 Verification on 2026-10-13 in Codex Cloud, Node `24.19.0`, npm `11.9.0`:
 
@@ -416,7 +436,9 @@ Follow-up verification for the filtered mutation fix on 2026-10-13:
   untested.
 
 Do not infer local full-stack or hosted success from frontend/simulated SQL results.
-The PR remains open for independent review and supported-host integration results.
+These historical results describe the Cloud investigation, not the later
+owner-reported complete Mac pass in merged PR #24. Hosted success cannot be
+inferred from either local result.
 
 Follow-up investigation of the unexpected INSERT 201 on 2026-10-13:
 

@@ -42,6 +42,12 @@ npm run preview  # Serve the production build locally
 
 The frontend needs no backend services or credentials. With Bash and a running local Docker daemon, `npm run check:db` runs disposable PostgreSQL migration, constraint, and RLS checks. `npm run check:supabase` runs real local Supabase Auth/PostgREST tests with synthetic accounts and two fictional restaurants, using pinned CLI 2.120.0. Run it from Mac Terminal with Docker Desktop, not the VS Code Dev Container. It resets and removes the dedicated local integration database. Both backend checks are separate from `npm run check`, which does not validate SQL. See [docs/BACKEND.md](docs/BACKEND.md) for prerequisites, commands, and verification limits.
 
+For an isolated hosted development project, follow the [owner-controlled Supabase
+DEV guide](docs/HOSTED-DEV.md). It includes manual setup/migrations and explicitly
+approved synthetic authorization verification. Hosted checks have **not** been
+executed; `npm run check:hosted-preflight` tests only local safety guards. No hosted
+workflow runs automatically or connects the frontend.
+
 ### VS Code Dev Container
 
 Install Docker Desktop and the VS Code Dev Containers extension, then open the repository in VS Code. Select **Dev Containers: Reopen in Container**, or **Rebuild and Reopen in Container** after configuration changes. The [container configuration](.devcontainer/devcontainer.json) uses Node 24; run `npm ci` and `npm run dev` in its terminal.
