@@ -1,0 +1,61 @@
+# Local synthetic integration project only. Never link/push this configuration.
+# CLI 2.120.0: https://supabase.com/docs/guides/local-development/cli/config
+project_id = "tip-calculator-integration"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+# Exercise platform default grants; migrations must explicitly narrow them.
+auto_expose_new_tables = true
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.migrations]
+enabled = true
+schema_paths = []
+
+[db.seed]
+enabled = false
+sql_paths = []
+
+[db.pooler]
+enabled = false
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:5173"
+additional_redirect_urls = []
+jwt_expiry = 3600
+enable_signup = true
+enable_anonymous_sign_ins = false
+minimum_password_length = 12
+
+[auth.email]
+enable_signup = true
+# Synthetic local tests only; does not test email delivery/confirmation.
+enable_confirmations = false
+
+[auth.rate_limit]
+# Bounded fixture runs, including two clean replays, without time-dependent throttling.
+sign_in_sign_ups = 100
+
+[realtime]
+enabled = false
+[studio]
+enabled = false
+[local_smtp]
+enabled = false
+[storage]
+enabled = false
+[storage.vector]
+enabled = false
+[edge_runtime]
+enabled = false
+[analytics]
+enabled = false

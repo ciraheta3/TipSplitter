@@ -4,7 +4,8 @@ PostgreSQL provides exact numeric storage, foreign keys, transactions and row-le
 security (RLS). Supabase is the intended managed PostgreSQL/Auth platform for the
 future shared application. The migrations use Supabase API role names and reference
 its managed Auth identities.
-They create no hosted project, login flow, client SDK, API or frontend connection.
+They create no hosted project, login flow, client SDK or frontend connection.
+The optional local integration harness exercises the actual Auth and REST APIs.
 The existing React application still uses its browser-local roster.
 
 ## Entities and tenant boundary
@@ -119,7 +120,8 @@ SECURITY INVOKER with client execution revoked.
 The trust boundary assumes Supabase verifies tokens and supplies `auth.uid()`
 through its authenticated request context. Never distribute database login
 credentials that let a client impersonate the API role or set raw JWT session
-variables. The disposable fixture simulates this context; it does not validate it.
+variables. The disposable PostgreSQL fixture simulates this context. The separate local
+Supabase harness verifies actual Auth-issued sessions and PostgREST requests.
 
 ### Trusted provisioning and lifecycle
 
@@ -144,7 +146,7 @@ to close access during an incident, first revoke authenticated roster grants
 (including column grants) and helper execution through a trusted operation. Dropping membership records/tables
 as a rollback would lose authorization metadata and must not be automated.
 
-Next work remains live Auth/API validation, trusted account administration and
+Next work remains hosted Auth/API validation, trusted account administration and
 shared roster sync with exact numeric transport and explicit localStorage import.
 Shift participation, finalization/reopening, invitations and historical snapshots
 remain separate work. No financial logic or browser-local behavior changes here.
@@ -157,11 +159,7 @@ Do not edit an applied migration or use `IF NOT EXISTS` to conceal schema drift.
 Repeatability means replaying the ordered history onto an empty database, not
 reapplying CREATE TABLE to an already migrated database.
 
-No Supabase CLI configuration is needed for this small schema. Avoiding a full
-Supabase local stack keeps the existing frontend install/start workflow independent
-of backend services. The existing Codex Cloud install script and Start Skill are
-unchanged. Hosted dev/staging/production projects and the Supabase CLI version/config
-will be chosen in subsequent work; do not link or push this PR to a hosted project.
+### Frontend and simulated PostgreSQL checks
 
 With Node 24, Bash and a running **local** Docker daemon at
 `/var/run/docker.sock` (Docker Desktop or the GitHub Actions Ubuntu runner):
@@ -169,51 +167,200 @@ With Node 24, Bash and a running **local** Docker daemon at
 ```bash
 npm ci
 npm audit
-npm run check       # Existing test/lint/build; does NOT validate SQL
-npm run check:db    # Actual PostgreSQL migration/schema/security assertions
+npm run check       # 75 frontend tests, lint, TypeScript/build; no SQL verification
+npm run check:db    # Two disposable PostgreSQL migration/security replays
 ```
 
-The database check can also run without npm dependencies:
+`check:db` retains its existing separate CI job. It uses `postgres:17-bookworm`,
+no network, no published ports, a tmpfs database and cleanup on exit. It applies
+all ordered migrations on two clean databases with `psql -X --set=ON_ERROR_STOP=1`.
+`supabase/tests/bootstrap.sql` creates **simulated** API roles/default grants,
+`auth.users` and `auth.uid()` with test claims. Never apply it to Supabase.
+`roster.sql` and `authorization.sql` test real PostgreSQL constraints, timestamps,
+ACLs and RLS, including temporary extra grants to test RLS separately from ACLs.
+All fixtures and test grants roll back. This harness does **not** issue JWTs or
+verify Auth, PostgREST, Supabase-managed roles or the CLI ledger.
+
+### Real local Supabase integration (Issue #23)
+
+CLI **2.120.0** is an exact project development dependency in package.json and the
+lockfile. `supabase/config.toml` is tracked, with PostgreSQL 17, real Auth, public-only
+PostgREST exposure and disabled seeds. Platform automatic default grants remain
+**enabled** so the migrations' revokes are actually exercised. Unused services
+are disabled/excluded to limit resource use. No frontend SDK is installed.
+Email confirmation is disabled **only for this synthetic local configuration**;
+email delivery, confirmation, recovery and invitations are not verified.
+
+Use **Mac Terminal on the host**, with Node 24/npm and Docker Desktop running,
+not the VS Code Dev Container (which has no Docker CLI/socket). Work in an unlinked
+checkout. Docker Desktop must provide `/var/run/docker.sock` (enable its default
+Docker socket option if necessary). Allow several minutes, disk space for image
+pulls, and roughly 8 GB Docker memory for the initial local stack. Ports 54320–54322
+must be free. Check Docker's published-port binding/firewall before using any
+local stack on an untrusted network; this configuration is not a hosted project.
+
+From the repository root:
 
 ```bash
-bash -n scripts/check-db.sh
-bash scripts/check-db.sh
+npm ci
+npm audit
+npm run check
+npm run check
+npm run check:db
+npm run check:supabase
 ```
 
-The runner uses `postgres:17-bookworm`, reports `SELECT version()`, and uses `psql -X
---set=ON_ERROR_STOP=1` to apply every migration in filename order. It recreates the
-schema and simulated Supabase role/default-grant setup, then replays and tests a
-second time. PostgreSQL major 17 is selected; patch updates follow the image tag.
-For strict byte-for-byte tool reproduction, record/pin the image digest from a check
-run. No ports, host directories, database URL, credentials or existing data are used:
-the container has no network, stores its database in tmpfs and is removed on exit.
-The fixed password is a disposable local test value, never a hosted secret.
+`check:supabase` starts the stack, runs **two clean `db reset --local --no-seed`
+replays**, checks `supabase_migrations.schema_migrations` exactly against every
+tracked migration version in filename order, audits security, and runs the HTTP
+suite after each reset. Finally it stops this project with `--no-backup`, removing
+its synthetic fixture volumes, also on ordinary test failure. A hard interruption
+can leave containers; clean them with the command below. It never invokes login,
+link, remote push, `--linked` or `--db-url`. Never put useful data in this dedicated
+`tip-calculator-integration` local project: reset and clean intentionally destroy it.
+It refuses a checkout containing `supabase/.temp/project-ref`, an unexpected API
+URL, an unexpected project ID, or a CLI version different from the pin.
 
-`supabase/tests/bootstrap.sql` creates simulated API roles/default ACLs plus a
-**test-only** `auth.users` table and `auth.uid()` reading synthetic session claims.
-**Never apply it to a hosted project.** The production migration neither creates
-nor alters Supabase-managed Auth objects. Both clean replays recreate public,
-private and test Auth schemas. `roster.sql` retains the prior schema, exact weight,
-NULL vs zero, FK and timestamp assertions. `authorization.sql` continues in the
-same transaction, exercising real ACL/RLS behavior for admins and closers in two
-restaurants, member-list visibility, anonymous/missing/unassigned identities,
-revocation with unchanged claims, mixed-role dual memberships, tenant/key changes,
-self-invitation/promotion/reactivation, deletion, helper replacement and search-path
-shadowing. Test-only
-extra grants isolate RLS INSERT/UPDATE checks from ACLs. Fixtures, claims and grants
-roll back. SQL failures fail the separate database CI job.
+Manual local lifecycle commands (also use only the pinned CLI/local socket):
 
-These checks validate PostgreSQL SQL execution and database authorization, not the
-full hosted Supabase environment. Supabase Auth/JWT issuance, PostgREST behavior,
-numeric JSON transport, hosted default/inherited grants, CLI migration-ledger
-integration, backups and restore are unverified here. Before eventual shared access,
-validate those in an isolated development project with synthetic data and inspect
-table/column ACLs, role inheritance and policies. Never use production credentials
-for this validation. If Docker is unavailable, report SQL as **not executed**; the
-frontend check is not a substitute.
+```bash
+npm run supabase:local -- start  # Preserves existing local data; suppresses key output
+npm run supabase:local -- reset  # Destructive LOCAL migration replay, no seed
+npm run supabase:local -- audit  # Read-only ledger/managed role/grant/exposure audit
+npm run supabase:local -- stop   # Stop while preserving local volumes
+npm run supabase:local -- clean  # Stop and remove synthetic local volumes
+# Optional CLI-ledger display, always explicit local selection:
+npx --no-install supabase migration list --local
+```
 
-Verification for Issue #21 is recorded in its PR. Hosted Supabase authentication,
-PostgREST and CLI-ledger integration have not been tested by this SQL harness.
+There is no arbitrary CLI argument forwarding. Docker context/endpoint/TLS
+selectors are cleared and the local Unix socket is selected explicitly. API
+addresses and keys are read from the local CLI status at runtime, not .env or
+hosted credentials. Vendor CLI/SQL output is captured because it can contain keys;
+Each vendor action has a ten-minute timeout; failures terminate its process group
+and exit nonzero with the failing action and no sensitive output. Diagnose
+locally with CLI help/service health and the named assertions, without publishing
+CLI status, debug output, container environments or Auth logs. Never commit keys,
+JWTs, passwords, signing keys, account exports or .env files.
+
+`supabase/integration/authorization.mjs` creates seven random synthetic
+`example.test` accounts using real Auth signup and password sign-in, then verifies
+each session with `/auth/v1/user`. Passwords and session tokens live only in memory.
+Only the restricted local Docker/psql setup action inserts two fictional restaurants
+(Juniper Cafe and Moonbeam Diner), roster records and memberships using the actual
+Auth-issued user UUIDs. It requires an empty Auth/application fixture database.
+There is no self-join, self-promote, provisioning RPC or public fixture endpoint.
+Database access is used only for setup, revocation, catalog audits and persisted-row
+verification; all client authorization assertions use real HTTP requests.
+
+The suite checks exact statuses, database/PostgREST error codes, complete returned
+row sets and persisted rows: anon/no session, nonmember with hostile signed user
+metadata, admins and closers in both restaurants, mixed-role dual memberships,
+own roster creation/edit/deactivation/reactivation, admin member lists including
+inactive records, closer own-active-only visibility, cross-restaurant reads/writes,
+revocation without re-sign-in, retained second-restaurant access, membership
+creation/promotion/revocation/reactivation, organization writes, immutable
+IDs/tenant/timestamps on INSERT and UPDATE, DELETE, same-tenant role FKs, private
+helper RPC/profile attempts, Auth admin listing/elevation/deletion, spoofed headers
+and corrupted real JWT signatures. It checks all four persisted tables remain
+unchanged after forbidden calls. RLS-hidden UPDATE legitimately returns HTTP 200
+with **zero rows**; this is asserted, never treated as an authorization success.
+
+`supabase/integration/audit.sql` uses actual Supabase catalogs, not mock roles:
+effective table **and every column** privilege (including inherited/PUBLIC grants),
+managed API NOLOGIN/BYPASSRLS flags, authenticator membership, FORCE RLS, scoped
+policies, helper postgres ownership/SELECT/BYPASSRLS/auth.uid execution, empty
+search path, private schema USAGE/CREATE and function EXECUTE. The runner also
+checks actual PostgREST container schemas, and HTTP profile attempts reject both
+`auth` and `tipsplitter_private`. The managed `service_role` remains BYPASSRLS but
+has **no application table privileges**; HTTP reads must fail despite that key.
+Trusted fixture provisioning uses local postgres, not a service-role grant.
+The cloud image-extraction failure below prevented real compatibility verification.
+Both merged migrations remain unchanged; no database compatibility defect was
+verified and no corrective migration or permission change was made. On a supported
+host, any failing catalog/API check must be understood before appending a narrowly
+reviewed forward-only correction with regression checks. Never widen grants to pass
+tests. Platform service_role Auth administration remains privileged; denying its
+application-table access does not make that key safe for browsers.
+
+Full-stack CI is deliberately not added yet: it requires Docker, several service
+images, memory/disk, exclusive local ports and no external project dependencies.
+The existing frontend and disposable database CI paths remain independent. A
+future CI job must isolate each run, bound its timeout and clean volumes on failure.
+
+Vendor references checked for the pinned workflow: [CLI installation/versioning](https://supabase.com/docs/guides/local-development/cli/getting-started),
+[CLI reset/migration commands](https://supabase.com/docs/reference/cli/supabase-db-reset),
+[API schema exposure](https://supabase.com/docs/guides/api/using-custom-schemas),
+[managed database roles](https://supabase.com/docs/guides/database/postgres/roles).
+The installed CLI's `start`, `db reset` and `migration list --help` were also checked.
+
+### Future isolated hosted DEV/STAGING verification
+
+**hosted integration not tested**. This issue does not authorize hosted deployment
+or access to production. Local success cannot establish hosted inherited/default
+grants, role ownership, network exposure, backups or restore behavior.
+
+Before future hosted verification, a project owner must:
+
+1. Create a separately owned, isolated DEV/STAGING Supabase project with no production
+   records, integrations, credentials or employee information. Agree project ownership,
+   billing, network access and deletion responsibilities; store secrets in an approved
+   secret manager, never Git or frontend assets. Set explicit exposed API schemas to
+   `public` and verify `auth`/`tipsplitter_private` are excluded.
+2. Record server/service versions, managed role flags/inheritance, schema/function
+   owners, default ACLs and effective table/column privileges. Verify the helper's
+   postgres owner can read through FORCE RLS and call real auth.uid. Preserve custom
+   service_role revokes: BYPASSRLS alone is not an application-table grant. A mismatch
+   must fail closed and receive review before any permission correction.
+3. Take a backup and prove a restore procedure in isolation **before** migration;
+   agree a rollback/incident plan, including revoking column grants and helper
+   execution. Destructive table/membership deletion is not rollback. Obtain approval
+   for the exact project and complete ordered migration/application plan, then apply
+   once through an approved ledger-aware process. Never use the simulated bootstrap
+   or automatically replay this local destructive runner against a remote URL.
+4. Provision synthetic Auth accounts and two fictional restaurants through an
+   approved restricted administration procedure. Repeat the local HTTP permission
+   matrix using genuine hosted sessions (including revocation with the same token),
+   compare exact row sets and stored records, inspect ACL/RLS catalogs and schema
+   exposure, and verify ordinary admins/closers cannot administer accounts. Keep all
+   hosted secrets out of logs. Separately test email confirmation, recovery, token
+   refresh/expiry and invitations under the approved account-lifecycle design.
+5. Record actual executed results and remaining gaps; independently review all
+   permission changes. Verify backup/restore, cleanup and retention. Remove synthetic
+   memberships before deleting Auth users (the RESTRICT FK intentionally blocks
+   implicit deletion), then remove fixture data/project through approved actions.
+   Production rollout requires its own authorization and review.
+
+### Execution results
+
+Verification on 2026-10-13 in Codex Cloud, Node `24.19.0`, npm `11.9.0`:
+
+- `npm ci`: passed with the pinned CLI/lockfile. A reinstall encountered transient
+  extraction warnings; a subsequent clean reinstall had none.
+- `npm audit`: zero vulnerabilities.
+- `npm run check`, twice: passed, 75 tests each, ESLint and production build.
+  ESLint also checks the new Node integration scripts.
+- `npm run check:db`: passed both clean replays on PostgreSQL `17.11`, including
+  the existing constraints, timestamps, ACLs and simulated authorization tests.
+- Node syntax checks, `bash -n scripts/check-db.sh`, `git diff --check`: passed.
+- `npm run check:supabase`: startup attempted, failed at its ten-minute timeout
+  while pulling `ghcr.io/supabase/postgres:17.11.0.004`; cleanup completed. A direct
+  retry of that exact Docker image confirmed **`failed to register layer: no space
+  left on device`**. This cloud daemon uses the `vfs` storage driver on a 32 GB
+  filesystem; downloaded image layers exhausted its extraction capacity. The
+  Auth (`v2.197.0`), PostgREST (`v16.4`) and Kong (`2.8.1`) images downloaded,
+  but no Supabase service stack started and no synthetic Auth fixtures were created.
+- **Real local Supabase integration not executed**: CLI migration-ledger/reset
+  replay, managed-role/effective-grant/private-helper audit, actual API schema
+  exposure, Auth signup/sign-in/session issuance, and all HTTP permission,
+  revocation and bypass assertions remain unverified. Image download is not a
+  passed service/integration test. Run the exact Mac Terminal commands above with
+  Docker Desktop to complete these checks; Mac execution was not performed here.
+- **hosted integration not tested**. No hosted provisioning/link/push/deployment,
+  production access or browser login/synchronization work was performed.
+
+Do not infer local full-stack or hosted success from frontend/simulated SQL results.
+The PR remains open for independent review and supported-host integration results.
 
 ## Lifecycle and open decisions
 

@@ -19,7 +19,7 @@ The client uses React 19, TypeScript 6, Vite 8, and Tailwind CSS 4. [src/App.tsx
 
 Vitest runs 75 automated tests: 60 calculation tests and 15 frontend interface tests using React Testing Library, user-event, jest-dom, and jsdom; ESLint and TypeScript check the source. GitHub Actions runs tests, lint, and the production build on pull requests and pushes to `main`.
 
-A PostgreSQL roster schema is implemented in versioned migrations, with organization-scoped roles and employees, exact weights, same-tenant constraints, and deny-by-default RLS and table privileges. Application access remains closed: there is no live Supabase integration, authentication, or frontend database connection. See [backend design and verification](docs/BACKEND.md). A separate CI job checks the database schema.
+A PostgreSQL roster schema is implemented in versioned migrations, with organization-scoped roles and employees, exact weights, same-tenant constraints, and deny-by-default RLS and table privileges. Merged memberships authorize active admins and closers within their own restaurant. A separate local Supabase harness verifies real Auth/PostgREST authorization; the frontend still has no authentication or database connection. See [backend design and verification](docs/BACKEND.md). A separate CI job checks the database schema.
 
 ## Development
 
@@ -40,7 +40,7 @@ npm run build    # Production bundle in dist/
 npm run preview  # Serve the production build locally
 ```
 
-The frontend needs no backend services or credentials. With Bash and a running local Docker daemon, `npm run check:db` runs disposable PostgreSQL migration, constraint, and RLS checks. These are separate from `npm run check`, which does not validate SQL. See [docs/BACKEND.md](docs/BACKEND.md) for prerequisites, commands, and verification limits.
+The frontend needs no backend services or credentials. With Bash and a running local Docker daemon, `npm run check:db` runs disposable PostgreSQL migration, constraint, and RLS checks. `npm run check:supabase` runs real local Supabase Auth/PostgREST tests with synthetic accounts and two fictional restaurants, using pinned CLI 2.120.0. Run it from Mac Terminal with Docker Desktop, not the VS Code Dev Container. It resets and removes the dedicated local integration database. Both backend checks are separate from `npm run check`, which does not validate SQL. See [docs/BACKEND.md](docs/BACKEND.md) for prerequisites, commands, and verification limits.
 
 ### VS Code Dev Container
 
