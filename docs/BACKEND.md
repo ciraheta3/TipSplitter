@@ -260,7 +260,7 @@ own roster creation/edit/deactivation/reactivation, admin member lists including
 inactive records, closer own-active-only visibility, cross-restaurant reads/writes,
 revocation without re-sign-in, retained second-restaurant access, membership
 creation/promotion/revocation/reactivation, organization writes, immutable
-IDs/tenant/timestamps on INSERT and UPDATE, DELETE, same-tenant role FKs, private
+IDs/timestamps on INSERT and UPDATE, tenant moves on UPDATE, DELETE, same-tenant role FKs, private
 helper RPC/profile attempts, Auth admin listing/elevation/deletion, spoofed headers
 and corrupted real JWT signatures. It checks all four persisted tables remain
 unchanged after forbidden calls. RLS-hidden UPDATE legitimately returns HTTP 200
@@ -277,6 +277,28 @@ both restaurants and still require zero updated rows. Auth-admin DELETE already
 uses a specific user resource URL. Assertion diagnostics display only validated
 PostgREST/SQLSTATE codes, never raw response bodies, headers, keys or sessions.
 See [PostgREST's safeupdate documentation](https://docs.postgrest.org/en/stable/integrations/pg-safeupdate.html).
+
+Every authenticated roster INSERT now independently verifies its session through
+Auth, compares the JWT subject and top-level `authenticated` role with the fixture,
+reads the actual Auth identity and all its memberships through trusted local SQL,
+and compares PostgREST's self-membership rows with that expected state (including
+revocation). A separate rolled-back SQL audit evaluates `auth.uid()` and the private
+helper for that verified subject under `authenticated`; this supplements, rather
+than replaces, real HTTP authorization. Ordinary fixture API calls always use that
+user's token and the local anon key and reject identity-header overrides.
+Successful inserts receive an independent SQL check of the committed row, tenant
+and submitted fields. Denials snapshot all four tables before and after each call,
+**before asserting the status**, and group checks also inspect state on failure.
+Safe diagnostics identify fixture category, target A/B, effective membership,
+JWT/key category, validated error code and whether persisted state changed. They
+do not print account identifiers, credentials, JWT claims or response bodies.
+
+An INSERT must supply `organization_id`: active admins **and closers** may create a
+new roster entry in each restaurant they belong to. Changing an existing entry's
+`organization_id` is forbidden even for dual members. The two operations must have
+different test expectations. Cross-restaurant INSERT denials target a restaurant
+where the user has no active membership; nonmember/revoked checks cover both A/B.
+Client-supplied IDs and timestamps remain forbidden on INSERT as well as UPDATE.
 
 `supabase/integration/audit.sql` uses actual Supabase catalogs, not mock roles:
 effective table **and every column** privilege (including inherited/PUBLIC grants),
@@ -395,6 +417,55 @@ Follow-up verification for the filtered mutation fix on 2026-10-13:
 
 Do not infer local full-stack or hosted success from frontend/simulated SQL results.
 The PR remains open for independent review and supported-host integration results.
+
+Follow-up investigation of the unexpected INSERT 201 on 2026-10-13:
+
+- The owner reported another Mac first-replay audit/Auth/fixture pass, followed by
+  `deny POST job_roles` returning 201 instead of 403. The previous test's first
+  such successful request is `n=4`, own-restaurant loop `o=0`, with an INSERT body
+  overridden to target B. That is `users[4]`, **admin A / closer B**, sending its
+  real password-sign-in JWT (`role=authenticated`) and the local **anon** API key.
+  The payload contains only `organization_id=B`, `name=Forbidden`, `default_weight=1`.
+  It contains no protected ID/timestamp. Initial tenant assignment has an INSERT
+  column grant; the private helper returns `closer` for B and the INSERT RLS check
+  permits it. An UPDATE moving a row to B still lacks a column grant.
+- A focused Cloud reproduction used cached real GoTrue `v2.197.0`, PostgREST
+  `v16.4`, Kong `2.8.1`, PostgreSQL `17.11` and `pg-safeupdate` `1.4`. Auth created
+  the accounts and signed the sessions; PostgREST connected as an unprivileged
+  authenticator and verified those JWTs. Auth `/user`, token subject/role, stored
+  identity/membership and helper results agreed. The exact request returned 201
+  and a separate trusted SQL read confirmed **one committed B row**. The previous
+  unmodified HTTP suite reproduced the same failure and persisted row. This proves
+  the faulty expectation in the reproduced case; the cleaned-up Mac database and
+  its old tokens were not available for retrospective inspection here.
+- All seven identity categories were tested against both restaurants: active
+  admin/closer INSERTs returned 201 and persisted one row; nonmembers returned
+  `403/42501` with no row/state change. Tenant moves, protected INSERT columns and
+  an INSERT after revoking B with the same session returned `403/42501`, with no
+  persisted change. No application grants, policies, helper or migrations changed;
+  no database authorization defect was reproduced and no new migration is justified.
+- The corrected complete HTTP module passed **708 real HTTP requests** through
+  these component services, including the new identity/membership/committed-row
+  checks and all existing denial, revocation, private API and Auth-admin cases.
+  The component adapter changed only local credential/SQL plumbing. Its database
+  API roles and `auth.uid()` were provisioned explicitly and its gateway configured
+  for the diagnostic; this is **not** a Supabase CLI migration-ledger/reset or
+  Supabase-managed-role compatibility pass. No synthetic user session was forged.
+- Deliberate fixture mistakes in a disposable copy verified the new guards:
+  swapping the JWT or changing a stored membership failed the independent preflight
+  and inserted no probe row. Deliberately expecting denial for an authorized B
+  INSERT reported the dual-member/closer/JWT/anon-key categories and
+  `persisted=changed`, including the outer group check, with one committed row
+  independently confirmed. All diagnostic containers and synthetic data were removed.
+- Cloud `npm ci`, `npm audit` (zero vulnerabilities), two final `npm run check`
+  runs (75 tests each, lint/build), both `check:db` replays, syntax and diff checks
+  passed. An initial lint failure in error wrapping was corrected before the two
+  final successful runs.
+- The full pinned `npm run check:supabase` was **not rerun in Cloud**, which still
+  has the same 32 GB `vfs` extraction limit and lacks the required Supabase database
+  image. Its complete two-replay managed stack remains unverified. On Mac, pull
+  this PR branch, run `npm ci`, then `npm run check:supabase` with Docker Desktop.
+  **hosted integration not tested**.
 
 ## Lifecycle and open decisions
 

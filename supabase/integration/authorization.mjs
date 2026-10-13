@@ -4,6 +4,8 @@ import { credentials, sql } from '../../scripts/supabase-local.mjs'
 
 const tables = ['organizations', 'organization_memberships', 'job_roles', 'employees']
 const roster = ['job_roles', 'employees']
+const categories = ['admin-A', 'closer-A', 'admin-B', 'closer-B',
+  'dual-admin-A-closer-B', 'dual-closer-A-admin-B', 'nonmember']
 const uuid = value => {
   assert.match(value, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'fixture UUID')
   return `'${value}'`
@@ -34,12 +36,21 @@ export async function integration() {
   }
   function status(result, expected, label) {
     const code = typeof result.data?.code === 'string' && /^(?:PGRST[0-9]{3}|[0-9A-Z]{5})$/.test(result.data.code) ? result.data.code : 'withheld'
-    same(result.status, expected, `${label} HTTP status (API error code: ${code}; response withheld)`)
+    same(result.status, expected, `${label} HTTP status (${result.context ?? 'no fixture context'}; API error code: ${code}; response withheld)`)
   }
-  async function api(user, table, { query = '', ...options } = {}) {
-    return request(`/rest/v1/${table}${query ? `?${query}` : ''}`, {
-      token: user?.token, headers: { Prefer: 'return=representation', ...options.headers }, ...options,
+  async function api(user, table, { query = '', headers = {}, ...options } = {}) {
+    // Ordinary fixture requests must never silently replace the user's JWT/key.
+    assert.ok(!('token' in options) && !('key' in options)
+      && !Object.keys(headers).some(k => ['authorization', 'apikey'].includes(k.toLowerCase())), 'fixture identity headers cannot be overridden')
+    let context = `${user?.category ?? 'anonymous'}; key=anon`
+    if (roster.includes(table) && options.method === 'POST') {
+      context = await insertContext(user, options.body.organization_id)
+    }
+    const result = await request(`/rest/v1/${table}${query ? `?${query}` : ''}`, {
+      ...options, token: user?.token, key: config.ANON_KEY,
+      headers: { Prefer: 'return=representation', ...headers },
     })
+    return { ...result, context }
   }
   async function read(user, table, query = '') {
     const result = await api(user, table, { query })
@@ -48,16 +59,24 @@ export async function integration() {
     return result.data
   }
   async function denied(user, table, options, code = '42501', http = user ? 403 : 401) {
+    const before = snapshot()
     const result = await api(user, table, options)
+    // Read before asserting status, so an unexpected 201 cannot skip this check.
+    const changed = snapshot() !== before
+    result.context += `; persisted=${changed ? 'changed' : 'unchanged'}`
     status(result, http, `deny ${options.method ?? 'GET'} ${table}`)
     same(result.data?.code, code, `deny ${table} database code`)
+    assert.ok(!changed, `deny ${table}: ${result.context}`)
   }
+  const snapshot = () => sql(`SELECT jsonb_build_array(${tables.map(t => `(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM public.${t} t)`).join(',')});`)
   async function unchanged(action) {
     // Trusted local read only checks actual persisted rows after forbidden calls.
-    const snapshot = () => sql(`SELECT jsonb_build_array(${tables.map(t => `(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM public.${t} t)`).join(',')});`)
     const before = snapshot()
-    await action()
-    same(snapshot(), before, 'forbidden requests leave all persisted rows unchanged')
+    try { await action() } catch (error) {
+      error.message += `; forbidden group persisted=${snapshot() === before ? 'unchanged' : 'changed'}`
+      throw error
+    }
+    assert.ok(snapshot() === before, 'forbidden requests leave all persisted rows unchanged')
   }
 
   // Actual signup AND password sign-in, not forged JWTs or SQL-inserted users.
@@ -73,7 +92,7 @@ export async function integration() {
     status(signedIn, 200, 'Auth password sign-in')
     assert.ok(signedIn.data.access_token && signedIn.data.refresh_token, 'real Auth session issued')
     same(signedIn.data.user.id, signup.data.user.id, 'sign-in resolves same real identity')
-    const user = { id: signedIn.data.user.id, token: signedIn.data.access_token }
+    const user = { id: signedIn.data.user.id, token: signedIn.data.access_token, category: categories[i] }
     uuid(user.id)
     const session = await request('/auth/v1/user', { token: user.token })
     status(session, 200, 'Auth verifies session')
@@ -84,6 +103,7 @@ export async function integration() {
   // mixed dual closer-A/admin-B, authenticated nonmember with hostile metadata.
   const memberships = [[0, 0, 'admin'], [0, 1, 'closer'], [1, 2, 'admin'], [1, 3, 'closer'],
     [0, 4, 'admin'], [1, 4, 'closer'], [0, 5, 'closer'], [1, 5, 'admin']]
+  const revoked = new Set()
   sql(`BEGIN;
     INSERT INTO public.organizations (id,name) VALUES (${uuid(orgs[0])},'Fictional Juniper Cafe'),(${uuid(orgs[1])},'Fictional Moonbeam Diner');
     INSERT INTO public.job_roles (id,organization_id,name,default_weight) VALUES
@@ -95,6 +115,52 @@ export async function integration() {
       ${memberships.map(([o, u, r]) => `(${uuid(orgs[o])},${uuid(users[u].id)},'${r}')`).join(',')};
     COMMIT;`)
   console.log('Synthetic signup/sign-in/session verification and restricted local fixture setup passed.')
+
+  async function insertContext(user, organization) {
+    const target = orgs.indexOf(organization)
+    assert.ok(target >= 0, 'INSERT targets a known synthetic restaurant')
+    if (!user) return `anonymous; target=${'AB'[target]}; jwt=absent; key=anon`
+    const n = users.indexOf(user)
+    assert.ok(n >= 0, 'INSERT uses a known fixture identity')
+    const label = `${user.category}; target=${'AB'[target]}`
+    // Decode only for comparison; Auth and PostgREST still verify the signature.
+    let claims
+    try { claims = JSON.parse(Buffer.from(user.token.split('.')[1], 'base64url').toString()) }
+    catch { throw new Error(`${label}: malformed session claims; token withheld`) }
+    assert.ok(claims.sub === user.id && claims.role === 'authenticated', `${label}: JWT subject/role match fixture`)
+    const session = await request('/auth/v1/user', { token: user.token })
+    status(session, 200, `${label}: Auth independently verifies INSERT session`)
+    assert.ok(session.data.id === claims.sub, `${label}: verified Auth subject matches JWT`)
+    const expected = memberships.filter(([, i]) => i === n).map(([o, , role]) => ({
+      organization_id: orgs[o], role, is_active: !revoked.has(`${o}:${n}`),
+    })).sort((a, b) => a.organization_id.localeCompare(b.organization_id))
+    const actual = JSON.parse(sql(`SELECT jsonb_build_object('identity_exists', EXISTS(SELECT FROM auth.users WHERE id=${uuid(user.id)}),
+      'memberships', (SELECT coalesce(jsonb_agg(jsonb_build_object('organization_id', organization_id, 'role', role, 'is_active', is_active) ORDER BY organization_id),'[]')
+        FROM public.organization_memberships WHERE user_id=${uuid(user.id)}));`))
+    assert.ok(actual.identity_exists && JSON.stringify(actual.memberships.map(m => [m.organization_id, m.role, m.is_active]))
+      === JSON.stringify(expected.map(m => [m.organization_id, m.role, m.is_active])), `${label}: independent persisted identity/membership fixture check`)
+    const active = expected.filter(m => m.is_active)
+    const visible = await read(user, 'organization_memberships', `user_id=eq.${user.id}`)
+    assert.ok(JSON.stringify(membershipKeys(visible)) === JSON.stringify(active.map(m => `${m.organization_id}:${user.id}:${m.role}:true`).sort()),
+      `${label}: PostgREST self-memberships match verified identity and database`)
+    // Supplement HTTP checks with a rolled-back helper audit for this verified
+    // subject. This local SQL context is not a substitute for real HTTP auth.
+    const helper = JSON.parse(sql(`BEGIN; SET LOCAL ROLE authenticated;
+      SET LOCAL request.jwt.claims = '{"sub":"${user.id}","role":"authenticated"}';
+      SELECT jsonb_build_object('identity_matches', auth.uid()=${uuid(user.id)}, 'api_role', current_user,
+        'roles', jsonb_build_array(${orgs.map(o => `tipsplitter_private.membership_role(${uuid(o)})`).join(',')})); ROLLBACK;`))
+    const expectedRoles = orgs.map(o => active.find(m => m.organization_id === o)?.role ?? null)
+    assert.ok(helper.identity_matches && helper.api_role === 'authenticated'
+      && JSON.stringify(helper.roles) === JSON.stringify(expectedRoles), `${label}: private helper matches effective memberships`)
+    return `${label}; membership=${expectedRoles[target] ?? 'none'}; jwt=authenticated; key=anon`
+  }
+
+  function persistedInsert(table, row, body, label) {
+    uuid(row.id)
+    const actual = JSON.parse(sql(`SELECT coalesce(jsonb_agg(t),'[]') FROM public.${table} t WHERE id=${uuid(row.id)};`))
+    assert.ok(actual.length === 1 && Object.entries(body).every(([key, value]) => actual[0][key] === value),
+      `${label}: trusted read confirms one committed row with the requested tenant and fields`)
+  }
 
   async function visibility(u, allowedOrgs, visibleMemberships) {
     same(ids(await read(u, 'organizations')), allowedOrgs.slice().sort(), 'exact organization visibility')
@@ -113,10 +179,10 @@ export async function integration() {
           const result = await api(u, t, { method: 'PATCH', query: `organization_id=eq.${organization}`, body: { name: 'Forbidden' } })
           status(result, 200, 'RLS hidden UPDATE')
           same(result.data, [], 'RLS hidden UPDATE touches zero rows')
+          await denied(u, t, { method: 'POST', body: t === 'job_roles'
+            ? { organization_id: organization, name: 'Forbidden', default_weight: 1 }
+            : { organization_id: organization, name: 'Forbidden', default_role_id: roles[orgs.indexOf(organization)] } })
         }
-        await denied(u, t, { method: 'POST', body: t === 'job_roles'
-          ? { organization_id: orgs[0], name: 'Forbidden', default_weight: 1 }
-          : { organization_id: orgs[0], name: 'Forbidden', default_role_id: roles[0] } })
       }
     })
   }
@@ -141,13 +207,17 @@ export async function integration() {
     const visible = memberships.filter(([o, i]) => i === n || own.some(([a, , r]) => a === o && r === 'admin'))
     await visibility(u, allowedOrgs, visible)
     for (const [o] of own) {
-      const insertedRole = await api(u, 'job_roles', { method: 'POST', body: { organization_id: orgs[o], name: `Synthetic ${n}-${o}`, default_weight: 0.25 } })
+      const roleBody = { organization_id: orgs[o], name: `Synthetic ${n}-${o}`, default_weight: 0.25 }
+      const insertedRole = await api(u, 'job_roles', { method: 'POST', body: roleBody })
       status(insertedRole, 201, 'own role INSERT')
       const r = insertedRole.data[0]
       assert.ok(r.id && r.created_at && r.updated_at, 'database-generated role metadata')
-      const insertedEmployee = await api(u, 'employees', { method: 'POST', body: { organization_id: orgs[o], name: `Synthetic ${n}-${o}`, default_role_id: r.id, default_weight_override: 0 } })
+      persistedInsert('job_roles', r, roleBody, insertedRole.context)
+      const employeeBody = { organization_id: orgs[o], name: `Synthetic ${n}-${o}`, default_role_id: r.id, default_weight_override: 0 }
+      const insertedEmployee = await api(u, 'employees', { method: 'POST', body: employeeBody })
       status(insertedEmployee, 201, 'own employee INSERT')
       const e = insertedEmployee.data[0]
+      persistedInsert('employees', e, employeeBody, insertedEmployee.context)
       for (const [t, row, edits] of [['job_roles', r, { default_weight: 1.25 }], ['employees', e, { default_role_id: roles[o], default_weight_override: null }]]) {
         const edited = await api(u, t, { method: 'PATCH', query: `id=eq.${row.id}`, body: { name: `Synthetic edited ${n}-${o}`, is_active: false, ...edits } })
         status(edited, 200, 'own roster UPDATE')
@@ -177,7 +247,10 @@ export async function integration() {
       }
       for (const [o] of own) {
         for (const t of roster) {
-          for (const body of [{ organization_id: orgs[1 - o] }, { id: randomUUID() }, { created_at: '2100-01-01T00:00:00Z' }, { updated_at: '2100-01-01T00:00:00Z' }]) {
+          // Tenant assignment is required on INSERT and allowed for either active
+          // membership. Moving an existing row is forbidden even for dual members.
+          await denied(u, t, { method: 'PATCH', query: `organization_id=eq.${orgs[o]}`, body: { organization_id: orgs[1 - o] } })
+          for (const body of [{ id: randomUUID() }, { created_at: '2100-01-01T00:00:00Z' }, { updated_at: '2100-01-01T00:00:00Z' }]) {
             await denied(u, t, { method: 'PATCH', query: `organization_id=eq.${orgs[o]}`, body })
             await denied(u, t, { method: 'POST', body: { organization_id: orgs[o], name: 'Forbidden', ...(t === 'job_roles' ? { default_weight: 1 } : { default_role_id: roles[o] }), ...body } })
           }
@@ -203,6 +276,7 @@ export async function integration() {
   for (const n of [0, 1, 4, 5]) {
     const u = users[n]
     sql(`UPDATE public.organization_memberships SET is_active=false WHERE organization_id=${uuid(orgs[0])} AND user_id=${uuid(u.id)};`)
+    revoked.add(`0:${n}`)
     status(await request('/auth/v1/user', { token: u.token }), 200, 'same Auth session remains valid after membership revocation')
     if (n < 2) await noAccess(u)
     else {
@@ -225,6 +299,7 @@ export async function integration() {
   }
   // A remaining B admin sees inactive memberships; revoked B closer sees none.
   sql(`UPDATE public.organization_memberships SET is_active=false WHERE organization_id=${uuid(orgs[1])} AND user_id=${uuid(users[3].id)};`)
+  revoked.add('1:3')
   status(await request('/auth/v1/user', { token: users[3].token }), 200, 'revoked B session remains valid')
   await noAccess(users[3])
   await visibility(users[2], [orgs[1]], memberships.filter(([o]) => o === 1).map(([o, n, r]) => [o, n, r, n !== 3]))
