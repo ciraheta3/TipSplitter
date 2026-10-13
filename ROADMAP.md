@@ -1,25 +1,44 @@
-# Restaurant Tip Pool Manager roadmap
+# TipSplitter roadmap
 
-[docs/PRD.md](docs/PRD.md) is the product direction and open-decision source; [SPEC.md](SPEC.md) is the current engineering contract. This roadmap supersedes the prototype demo's export/template/polish priorities.
+TipSplitter currently provides a browser-local tip allocation preview. The direction is a shared restaurant shift-management application that preserves true collected totals and actual historical payouts. [SPEC.md](SPEC.md) defines the current calculation contract; [docs/PRD.md](docs/PRD.md) records product direction and open business decisions. Future sequencing is provisional.
 
-## Prototype baseline (completed before PR 1)
+## Completed
 
-- React + TypeScript + Vite and Tailwind dashboard.
-- Cash/credit pool inputs and add/remove employee roster persisted locally.
-- Inline calculations and an on-screen variance panel; nearest rounding could overpay, and the panel was not an automated test suite.
+The following milestones are merged into `main`:
 
-## PR 1: calculation foundation (Issue #10)
+| Milestone | Delivered | Merged PR |
+| --- | --- | --- |
+| Calculation and verification foundation | Pure integer-cent/scaled-weight engine; floor-to-cent and floor-to-dollar payouts; signed reconciliation and explicit unassigned remainder; input/storage validation; 60 engine tests and test/lint/build CI. Retains the React dashboard and browser-local roster. | [#11](https://github.com/ciraheta3/tip-calculator/pull/11) |
+| Dependency security and development environment | Remediated dependency advisories at that milestone; Node 24 Dev Container aligned with CI; fixed Vite port 5173 and localhost forwarding; documented startup and draft-input reset behavior. | [#13](https://github.com/ciraheta3/tip-calculator/pull/13) |
 
-- Pure integer-cent/scaled-weight calculation and signed reconciliation engine.
-- Floor-to-cent and floor-to-dollar modes with explicit unassigned money.
-- Validation and minimal existing-screen integration.
-- Automated engine tests, test/check scripts, PR CI, AGENTS.md, and aligned documentation.
+These milestones provide a calculation preview, not a shared service or finalized ledger.
 
-## Later work (not in PR 1; provisional order)
+## In progress / proposed
 
-1. Shared employees, independent lunch/dinner shifts, and weight override models.
-2. Early-departure and understaffing adjustments after simultaneous-adjustment rules are decided.
-3. Finalization, actual payout history, and reconciliation after audit/editing rules are decided.
-4. Secure shared accounts/sync and separately scoped reporting.
+Both proposals below remain open and unmerged. Their changes are not part of the current application on `main`:
 
-Leftover allocation, override precedence, simultaneous adjustments, and finalization remain explicitly open in the PRD. No export, print, authentication, Supabase, or redistribution work is authorized by PR 1.
+| Proposal | Scope | Status |
+| --- | --- | --- |
+| [#15: Secure roster schema foundation](https://github.com/ciraheta3/tip-calculator/pull/15) | Proposed PostgreSQL/Supabase organizations, roles, and employees with tenant constraints and row-level security (RLS) closed to application access. Does not introduce live backend access, authentication, or roster sync. | Open; awaiting review |
+| [#17: React UI tests](https://github.com/ciraheta3/tip-calculator/pull/17) | Proposed automated interface coverage for inputs, allocation modes, validation, and roster persistence, plus UI test documentation. | Open; awaiting review |
+
+## Planned
+
+No delivery dates are committed. Each milestone requires separate scope and review:
+
+1. **Memberships and authentication:** establish verified restaurant membership and permissions, with narrowly tested tenant-scoped RLS before enabling shared data access. Supabase is a proposed foundation, not a connected service today.
+2. **Shared roster:** introduce shared employees and configurable roles, weight inheritance/overrides, and synchronization after access and conflict rules are defined.
+3. **Shifts and immutable history:** model independent lunch/dinner participation, finalization, and immutable snapshots of collected totals and actual payouts; define corrections and audit history before implementation.
+4. **Adjustments and reconciliation:** support early departure and understaffing after interaction rules are agreed; preserve true collected totals and recorded payouts.
+5. **Reporting and export:** scope manager reports, exports, and any staff-facing baseline worksheets separately; distinguish simplified views from fiscal records.
+6. **Offline capabilities:** consider offline work and synchronization after shared-data conflict and reconciliation policies are established.
+
+## Open decisions
+
+The PRD remains the source for business rules; this roadmap does not settle them:
+
+- **Leftovers:** recipient, tie-breaker, carryover, and recording policy for residual cents/dollars. Current previews leave all residual money unassigned.
+- **Overrides and participation:** role/employee/shift weight precedence and participation across lunch and dinner.
+- **Combined adjustments:** order, eligible recipients, caps, and whether adjustments change the pool or shares.
+- **Finalization and corrections:** authority to finalize/reopen, reconciliation requirements, allowable unassigned amounts, immutable snapshots, and audit rules.
+- **Shared access and data lifecycle:** permissions, retention, and synchronization conflicts; offline reconciliation requires further design.
