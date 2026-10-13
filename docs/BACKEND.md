@@ -266,6 +266,18 @@ and corrupted real JWT signatures. It checks all four persisted tables remain
 unchanged after forbidden calls. RLS-hidden UPDATE legitimately returns HTTP 200
 with **zero rows**; this is asserted, never treated as an authorization success.
 
+Permission-test DELETE and PATCH requests use explicit filters targeting existing
+synthetic tenants, rows or memberships. Supabase preloads `pg-safeupdate` for its
+PostgREST connection: an unfiltered mutation can fail with HTTP **400**, SQLSTATE
+**21000** (`DELETE/UPDATE requires a WHERE clause`) before the intended ACL check.
+That guard is separate from authorization; accepting 400 as a permission denial
+would not verify the contract. Filtered denials still require 401/403 and `42501`,
+with unchanged persisted tables. Nonmember/revoked roster PATCH checks target
+both restaurants and still require zero updated rows. Auth-admin DELETE already
+uses a specific user resource URL. Assertion diagnostics display only validated
+PostgREST/SQLSTATE codes, never raw response bodies, headers, keys or sessions.
+See [PostgREST's safeupdate documentation](https://docs.postgrest.org/en/stable/integrations/pg-safeupdate.html).
+
 `supabase/integration/audit.sql` uses actual Supabase catalogs, not mock roles:
 effective table **and every column** privilege (including inherited/PUBLIC grants),
 managed API NOLOGIN/BYPASSRLS flags, authenticator membership, FORCE RLS, scoped
@@ -358,6 +370,28 @@ Verification on 2026-10-13 in Codex Cloud, Node `24.19.0`, npm `11.9.0`:
   Docker Desktop to complete these checks; Mac execution was not performed here.
 - **hosted integration not tested**. No hosted provisioning/link/push/deployment,
   production access or browser login/synchronization work was performed.
+
+Follow-up verification for the filtered mutation fix on 2026-10-13:
+
+- The owner reported that Mac/Docker Desktop successfully started Supabase, passed
+  the first CLI migration replay and managed-role/ACL/RLS/helper/API audit, and
+  verified real signup/sign-in/sessions plus fixture setup. Its first unfiltered
+  DELETE then returned 400 rather than the expected 401. These are owner-reported
+  partial results; the remaining HTTP suite and second replay were not passed.
+- A focused Cloud reproduction using real PostgREST `v16.4`, PostgreSQL `17.11`
+  and upstream `pg-safeupdate` `1.4` confirmed unfiltered DELETE/PATCH return
+  `400/21000`. Explicit filters reach `42501` denials or the intended RLS-hidden
+  PATCH with zero rows; all four synthetic tables remain unchanged. This used
+  simulated database API roles, no JWTs and no Auth service, so it does **not**
+  verify real sign-in, authenticated-session 403 responses or a complete Supabase
+  stack. No database grants/policies were changed for this reproduction.
+- Cloud `npm ci`, zero-vulnerability `npm audit`, both `npm run check` runs (75
+  tests each, lint/build), both `check:db` replays, syntax and diff checks passed.
+- Full Supabase was not rerun in Cloud: the same 32 GB `vfs` environment remains,
+  and its required database image is unavailable after the verified extraction
+  failure above. The corrected end-to-end suite still needs a Mac rerun with
+  `npm run check:supabase`; do not report it as passed. Hosted integration remains
+  untested.
 
 Do not infer local full-stack or hosted success from frontend/simulated SQL results.
 The PR remains open for independent review and supported-host integration results.

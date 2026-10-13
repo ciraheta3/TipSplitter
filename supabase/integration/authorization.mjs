@@ -33,7 +33,8 @@ export async function integration() {
     return { status: response.status, data }
   }
   function status(result, expected, label) {
-    same(result.status, expected, `${label} HTTP status (response withheld)`)
+    const code = typeof result.data?.code === 'string' && /^(?:PGRST[0-9]{3}|[0-9A-Z]{5})$/.test(result.data.code) ? result.data.code : 'withheld'
+    same(result.status, expected, `${label} HTTP status (API error code: ${code}; response withheld)`)
   }
   async function api(user, table, { query = '', ...options } = {}) {
     return request(`/rest/v1/${table}${query ? `?${query}` : ''}`, {
@@ -108,9 +109,11 @@ export async function integration() {
     await visibility(u, [], [])
     await unchanged(async () => {
       for (const t of roster) {
-        const result = await api(u, t, { method: 'PATCH', body: { name: 'Forbidden' } })
-        status(result, 200, 'RLS hidden UPDATE')
-        same(result.data, [], 'RLS hidden UPDATE touches zero rows')
+        for (const organization of orgs) {
+          const result = await api(u, t, { method: 'PATCH', query: `organization_id=eq.${organization}`, body: { name: 'Forbidden' } })
+          status(result, 200, 'RLS hidden UPDATE')
+          same(result.data, [], 'RLS hidden UPDATE touches zero rows')
+        }
         await denied(u, t, { method: 'POST', body: t === 'job_roles'
           ? { organization_id: orgs[0], name: 'Forbidden', default_weight: 1 }
           : { organization_id: orgs[0], name: 'Forbidden', default_role_id: roles[0] } })
@@ -120,10 +123,10 @@ export async function integration() {
   await unchanged(async () => {
     for (const t of tables) {
       await denied(null, t, {})
-      await denied(null, t, { method: 'DELETE' })
+      await denied(null, t, { method: 'DELETE', query: `${t === 'organizations' ? 'id' : 'organization_id'}=eq.${orgs[0]}` })
     }
     for (const t of roster) {
-      await denied(null, t, { method: 'PATCH', body: { name: 'Forbidden' } })
+      await denied(null, t, { method: 'PATCH', query: `organization_id=eq.${orgs[0]}`, body: { name: 'Forbidden' } })
       await denied(null, t, { method: 'POST', body: t === 'job_roles'
         ? { organization_id: orgs[0], name: 'Forbidden', default_weight: 1 }
         : { organization_id: orgs[0], name: 'Forbidden', default_role_id: roles[0] } })
@@ -161,12 +164,16 @@ export async function integration() {
       }
     }
     await unchanged(async () => {
-      for (const t of tables) await denied(u, t, { method: 'DELETE' })
+      // Supabase's safeupdate guard rejects unfiltered DELETE before ACL checks.
+      // Target each member's own seeded restaurant so this tests forbidden deletion.
+      for (const [o] of own) {
+        for (const t of tables) await denied(u, t, { method: 'DELETE', query: `${t === 'organizations' ? 'id' : 'organization_id'}=eq.${orgs[o]}` })
+      }
       await denied(u, 'organizations', { method: 'POST', body: { name: 'Forbidden' } })
-      await denied(u, 'organizations', { method: 'PATCH', body: { name: 'Forbidden' } })
+      await denied(u, 'organizations', { method: 'PATCH', query: `id=eq.${orgs[own[0][0]]}`, body: { name: 'Forbidden' } })
       await denied(u, 'organization_memberships', { method: 'POST', body: { organization_id: orgs[1], user_id: u.id, role: 'admin' } })
       for (const body of [{ role: 'admin' }, { is_active: false }, { is_active: true }, { user_id: users[6].id }, { organization_id: orgs[1] }, { created_at: '2100-01-01T00:00:00Z' }, { updated_at: '2100-01-01T00:00:00Z' }]) {
-        await denied(u, 'organization_memberships', { method: 'PATCH', body })
+        await denied(u, 'organization_memberships', { method: 'PATCH', query: `user_id=eq.${u.id}`, body })
       }
       for (const [o] of own) {
         for (const t of roster) {
@@ -214,7 +221,7 @@ export async function integration() {
       status(retained, 200, 'retained B write')
       same(retained.data.length, 1, 'retained B changed exactly one row')
     }
-    await unchanged(() => denied(u, 'organization_memberships', { method: 'PATCH', body: { is_active: true, role: 'admin' } }))
+    await unchanged(() => denied(u, 'organization_memberships', { method: 'PATCH', query: `user_id=eq.${u.id}`, body: { is_active: true, role: 'admin' } }))
   }
   // A remaining B admin sees inactive memberships; revoked B closer sees none.
   sql(`UPDATE public.organization_memberships SET is_active=false WHERE organization_id=${uuid(orgs[1])} AND user_id=${uuid(users[3].id)};`)
@@ -222,7 +229,7 @@ export async function integration() {
   await noAccess(users[3])
   await visibility(users[2], [orgs[1]], memberships.filter(([o]) => o === 1).map(([o, n, r]) => [o, n, r, n !== 3]))
   await visibility(users[4], [orgs[1]], [[1, 4, 'closer']])
-  await unchanged(() => denied(users[3], 'organization_memberships', { method: 'PATCH', body: { is_active: true } }))
+  await unchanged(() => denied(users[3], 'organization_memberships', { method: 'PATCH', query: `user_id=eq.${users[3].id}`, body: { is_active: true } }))
   console.log('Revocation with unchanged real sessions and retained second-restaurant permissions passed.')
 
   const accountBefore = await request('/auth/v1/user', { token: users[6].token })
