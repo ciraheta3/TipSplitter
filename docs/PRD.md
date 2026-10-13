@@ -31,6 +31,33 @@ None of those later features is implemented in PR 1. No Supabase, authentication
 - **Overrides and shifts:** Define role/employee/shift precedence and participation rules for employees in both lunch and dinner.
 - **Shared access:** Define account permissions and retention requirements before choosing external services or configuration.
 
+## PR 3: secure roster schema foundation (Issue #14)
+
+PostgreSQL/Supabase is the intended shared backend. [BACKEND.md](BACKEND.md) documents
+the tenant-scoped organizations, configurable job roles, employee defaults, exact
+weight constraints, migration checks and authorization plan. RLS and table ACLs
+leave application access closed; there are no policies or frontend database calls.
+The browser-local roster and calculation behavior remain the current product.
+
+Roster conventions in this foundation: one organization represents one restaurant;
+an employee's required default role belongs to that organization; `NULL` default
+weight override inherits the role weight while zero is an explicit override.
+Defaults may change between shifts and are not historical snapshots. No role weights
+or real staff data are seeded.
+
+Additional open decisions before shared access:
+
+- Which operations can rotating closers perform, and which require an admin? Define
+  verified memberships, invitations, revocation, recovery and tenant-move rules before
+  adding access policies. Employees need not be login users.
+- Can an inactive role remain/select as a default? Does changing a default role retain
+  or clear an employee weight override? Define later shift override precedence explicitly.
+- Define roster retention, deletion, audit, backups, offline/simultaneous-edit behavior,
+  localStorage import and development/staging/production ownership before synchronization.
+
+Membership/Auth/RLS work should precede shared roster sync. Existing leftovers,
+adjustments, finalization and historical-payout decisions above remain open.
+
 ## Explicit PR 1 conventions to review
 
 - “Exact-cent” means floor to cent precision, not nearest-cent rounding or automatic largest-remainder allocation. $100 at 100:50 gives $66.66 and $33.33 with $0.01 unassigned. Whole-dollar mode gives $66 and $33 with $1 unassigned.
