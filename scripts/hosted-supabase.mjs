@@ -26,7 +26,7 @@ export function newPlan() {
 
 export function validate(config) {
   check(config.environment === 'development' && config.ownerAttestedDedicatedDev === true, 'Owner must attest this is a dedicated synthetic-only development project.')
-  check(/^tipsplitter-dev-[a-z0-9-]+$/.test(config.projectName), 'Expected explicitly named tipsplitter-dev project.')
+  check(/^tipsplitter-dev(?:-[a-z0-9-]+)?$/i.test(config.projectName), 'Project name must be tipsplitter-dev with an optional hyphen-separated suffix (letters, digits or hyphens), case-insensitively; an explicit -dev designation is required.')
   check(/^[a-z]{20}$/.test(config.projectRef) && config.approvedProjectRef === config.projectRef, 'Project reference must match the separately owner-approved reference.')
   check(config.apiUrl === `https://${config.projectRef}.supabase.co`, 'Only the exact approved HTTPS Supabase project origin is allowed; no custom hosts, paths or redirects.')
   check(typeof config.apiKey === 'string', 'A publishable or legacy anon key is required.')
