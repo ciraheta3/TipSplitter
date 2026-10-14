@@ -35,10 +35,13 @@ resets, changes dashboard settings, provisions accounts or executes remote SQL.
    an organization you control and agree who owns billing, access, backups and
    eventual deletion. A separate DEV organization is useful when production
    permissions would otherwise be shared. Give access only to needed maintainers.
-2. Approve creation, then select **New project**. Name it
-   `tipsplitter-dev-<your-fictional-suffix>`. Choose a region near your testing
-   location and consider residency requirements before creation; check current
-   availability and plan limits/costs. Generate a unique database password and
+2. Approve creation, then select **New project**. Name it `tipsplitter-dev`,
+   optionally followed by `-<your-fictional-suffix>` (letters, digits or hyphens).
+   Matching is case-insensitive: `TipSplitter-dev` and `TipSplitter-DEV-test` are
+   also accepted. The explicit `-dev` designation is required; `TipSplitter`,
+   `tipsplitter-prod` and `tipsplitter-production` are refused. Choose a region
+   near your testing location and consider residency requirements before creation;
+   check current availability and plan limits/costs. Generate a unique database password and
    save it in your password manager. Do not reuse any production password/key.
 3. Wait for the project to become healthy. Privately record organization, name,
    project reference, API URL, region, PostgreSQL version, creation date and owner.
@@ -203,11 +206,21 @@ This prints a `work/hosted-<run-uuid>/config.json` path. Everything in `work/` i
 ignored by Git. The directory is mode 700 and the config is mode 600. Open it
 privately in your editor; do not paste its contents into chat. It contains random
 run/restaurant/role/employee UUIDs and random passwords for exactly seven fictional
-emails. Fill `projectName`, `projectRef`, `apiUrl` and a **publishable** API key from
-the approved DEV dashboard. Legacy anon keys are also accepted when their decoded
-role/reference match. Secret/service-role/unknown keys are refused. Privately
+emails. Fill `projectName`, `projectRef`, `apiUrl` and `apiKey` (a **publishable** API
+key) from the approved DEV dashboard. Legacy anon keys are also accepted when
+their decoded role/reference match. Secret/service-role/unknown keys are refused. Privately
 compare the reference to your independent owner record before filling
 `approvedProjectRef` and setting `ownerAttestedDedicatedDev` to `true`.
+
+`projectName` must match the actual approved dashboard display name, using the DEV
+convention above. If a dedicated DEV project is named only `TipSplitter`, the
+owner should rename it in the dashboard to reflect its DEV purpose; do not invent
+a different name in config. For an existing private plan whose offline `prepare`
+failed only at the old name check, keep that plan, its seven Auth UUIDs, emails,
+passwords and fixture identifiers. This correction requires no new users,
+migrations or permission changes. If no preparation artifacts were created,
+retry the offline `prepare` command below with the same config after updating the
+script. Existing successfully prepared plans still use the fingerprint gate.
 
 Names/flags are owner attestations, **not proof** that a project is non-production:
 Supabase does not certify an environment's purpose via this config. The strict

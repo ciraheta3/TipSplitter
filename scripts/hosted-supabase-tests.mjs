@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync, symlinkSync, chmodSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, symlinkSync, chmodSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { newPlan, validate, fixtureSql, persistedSql, memberships } from './hosted-supabase.mjs'
 import { hostedHttp } from '../supabase/integration/hosted-http.mjs'
@@ -12,10 +12,29 @@ import { hostedHttp } from '../supabase/integration/hosted-http.mjs'
 function config() {
   const c = newPlan()
   // Fictional reference/key for offline validation only; no project queried.
-  Object.assign(c, { projectName: 'tipsplitter-dev-offline', projectRef: 'a'.repeat(20), approvedProjectRef: 'a'.repeat(20),
+  Object.assign(c, { projectName: 'tipsplitter-dev', projectRef: 'a'.repeat(20), approvedProjectRef: 'a'.repeat(20),
     apiUrl: `https://${'a'.repeat(20)}.supabase.co`, apiKey: 'sb_publishable_offline_fixture', ownerAttestedDedicatedDev: true })
   c.users.forEach(u => { u.id = randomUUID() })
   return c
+}
+
+for (const projectName of ['tipsplitter-dev', 'TipSplitter-dev', 'TIPSPLITTER-DEV', 'tipsplitter-dev-offline', 'TipSplitter-DEV-Offline-27']) {
+  test(`accept explicit DEV name ${projectName} without changing the private config`, () => {
+    const c = { ...config(), projectName }, before = structuredClone(c)
+    assert.equal(validate(c), c)
+    assert.ok(fixtureSql(c).setup.includes(c.users[0].id))
+    assert.deepEqual(c, before)
+    assert.ok(Object.hasOwn(c, 'apiKey'))
+    assert.ok(!Object.hasOwn(c, 'publishableKey'))
+  })
+}
+
+for (const projectName of ['TipSplitter', 'tipsplitter-prod', 'TipSplitter-Production', 'tipsplitter-staging',
+  'tipsplitter-development', 'tipsplitter-devops', 'tipsplitter-dev-', 'other-dev', 'prod-tipsplitter-dev',
+  'tipsplitterdev', 'tipsplitter-dev_test', 'tipsplitter-dev/test', 'tipsplitter-dev test']) {
+  test(`reject non-DEV or malformed project name ${projectName}`, () => {
+    assert.throws(() => validate({ ...config(), projectName }), /Project name must be tipsplitter-dev.*explicit -dev designation is required/)
+  })
 }
 
 test('reject ambiguous/production identity, privileged keys and non-synthetic fixtures', () => {
@@ -25,10 +44,12 @@ test('reject ambiguous/production identity, privileged keys and non-synthetic fi
     { environment: 'production' }, { ownerAttestedDedicatedDev: false }, { projectName: 'tipsplitter-production' },
     { approvedProjectRef: 'b'.repeat(20) }, { apiUrl: c.apiUrl + '/' }, { apiUrl: 'http://localhost:54321' },
     { apiUrl: 'https://example.test' }, { apiKey: 'sb_secret_offline' }, { apiKey: 'unknown' },
+    { apiKey: undefined, publishableKey: c.apiKey },
     { run: "'); DROP SCHEMA public; --" }, { orgs: [c.orgs[0], c.orgs[0]] },
   ]) assert.throws(() => validate({ ...c, ...change }))
   const legacy = role => `header.${Buffer.from(JSON.stringify({ ref: c.projectRef, role })).toString('base64url')}.signature`
   assert.throws(() => validate({ ...c, apiKey: legacy('service_role') }))
+  assert.throws(() => validate({ ...c, apiKey: `header.${Buffer.from(JSON.stringify({ ref: 'b'.repeat(20), role: 'anon' })).toString('base64url')}.signature` }))
   assert.equal(validate({ ...c, apiKey: legacy('anon') }).projectRef, c.projectRef)
   const other = structuredClone(c)
   other.users[0].email = 'employee@example.com'
@@ -67,18 +88,21 @@ test('CLI refuses noninteractive execution, insecure config and symlinks before 
   const dir = mkdtempSync('work/hosted-offline-test-')
   chmodSync(dir, 0o700)
   try {
-    const c = config(), path = resolve(dir, 'config.json')
+    const c = { ...config(), projectName: 'TipSplitter-dev' }, path = resolve(dir, 'config.json')
     writeFileSync(path, JSON.stringify(c), { mode: 0o600 })
     const blocker = resolve(dir, 'no-network.mjs')
     writeFileSync(blocker, "globalThis.fetch = () => { process.stderr.write('UNEXPECTED NETWORK ATTEMPT'); throw new Error('offline blocker') }\n")
     const invoke = (action, target = path) => {
       const result = spawnSync(process.execPath, ['--import', blocker, 'scripts/hosted-supabase.mjs', action, target], { encoding: 'utf8', env: { ...process.env, CI: 'true' } })
+      assert.ifError(result.error)
       assert.doesNotMatch(result.stderr, /UNEXPECTED NETWORK ATTEMPT/)
       return result
     }
     assert.equal(invoke('prepare').status, 0)
+    assert.deepEqual(JSON.parse(readFileSync(path, 'utf8')), c)
     const result = invoke('verify')
     assert.equal(result.status, 1)
+    assert.match(result.stderr, /Hosted verification requires an interactive owner terminal/)
     assert.doesNotMatch(result.stdout, /Hosted synthetic sign-in/)
     assert.ok(!result.stderr.includes(c.apiKey) && !result.stderr.includes(c.projectRef) && c.users.every(u => !result.stderr.includes(u.password)))
     symlinkSync(path, resolve(dir, 'symlink.json'))
