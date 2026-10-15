@@ -12,8 +12,11 @@ capabilities remain untested; this evidence does not establish browser login/ref
 This guide retains the original project preparation/seven-user authorization
 procedure for reference; do not rerun it for frontend acceptance. For Issue #29's
 optional login/logout UI and **one-user** owner-manual check, use [AUTH.md](AUTH.md).
-The frontend roster remains browser-local. No hosted access or changes by Codex are
-authorized by either guide.
+The calculator roster remains browser-local. Issue #31 adds a separate read-only
+shared view; use its [owner acceptance worksheet](SHARED-ROSTER.md#owner-driven-dev-acceptance-worksheet)
+for membership/no-membership checks. Positive hosted fixtures and all provisioning,
+revocation and cleanup require separate owner approval and a reviewed procedure.
+No hosted access or changes by Codex are authorized by these guides.
 
 ## Approval boundaries
 

@@ -27,6 +27,10 @@ users/fictional rows; Codex has not independently executed it. Issue #29 adds
 browser acceptance remains owner-manual. Synchronization, invitations and trusted
 account administration remain future work.
 
+Issue #31 adds the bounded [membership-aware shared roster read path](docs/SHARED-ROSTER.md)
+for review. It leaves weights, editing, import/synchronization and hosted fixture
+provisioning to separate reviews. The browser-local calculator remains independent.
+
 ## Planned
 
 No delivery dates are committed. Each milestone requires separate scope and review:

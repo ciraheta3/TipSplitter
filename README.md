@@ -10,6 +10,7 @@ TipSplitter helps restaurant managers preview how a pooled cash and credit tip t
 - Total collected, allocated payouts, and an explicitly unassigned remainder. Residual money is never automatically redistributed.
 - Visible validation for invalid amounts, weights, and saved roster data; storage failures allow session-only roster edits.
 - Optional hosted DEV sign-in/sign-out, verified session restoration and per-account browser-local roster isolation. No shared roster synchronization.
+- Membership-aware **Shared roster · DEV · Read only** with a restaurant selector, separate from the calculator. Shared weights and editing are deferred; see [design, validation and owner acceptance](docs/SHARED-ROSTER.md).
 - Responsive dashboard. Zero individual weights are allowed; an empty or all-zero roster leaves the entire pool unassigned.
 
 For a $100.00 pool with weights 100:50, cent mode previews $66.66 and $33.33 with $0.01 unassigned. Whole-dollar mode previews $66 and $33 with $1.00 unassigned. These are allocation previews, not records of actual payments.
@@ -20,7 +21,7 @@ The client uses React 19, TypeScript 6, Vite 8, and Tailwind CSS 4. [src/App.tsx
 
 Vitest preserves the original 75-test foundation (60 calculation and 15 interface tests) and adds mocked authentication/configuration tests using React Testing Library, user-event, jest-dom, and jsdom; ESLint and TypeScript check the source. GitHub Actions runs tests, lint, and the production build on pull requests and pushes to `main`.
 
-A PostgreSQL roster schema is implemented in versioned migrations, with organization-scoped roles and employees, exact weights, same-tenant constraints, and deny-by-default RLS and table privileges. Merged memberships authorize active admins and closers within their own restaurant. A separate local Supabase harness verifies real Auth/PostgREST authorization; the frontend now supports Auth only, with no application-table connection. See [backend design and verification](docs/BACKEND.md). A separate CI job checks the database schema.
+A PostgreSQL roster schema is implemented in versioned migrations, with organization-scoped roles and employees, exact weights, same-tenant constraints, and deny-by-default RLS and table privileges. Active admins and closers can inspect their restaurant's shared roster after verified Auth; the separate browser-local calculator remains unchanged. A local Supabase harness verifies real Auth/PostgREST authorization. See [backend design and verification](docs/BACKEND.md). A separate CI job checks the database schema.
 
 ## Development
 

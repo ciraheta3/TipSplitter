@@ -37,8 +37,9 @@ PostgreSQL/Supabase is the intended shared backend. [BACKEND.md](BACKEND.md) doc
 the tenant-scoped organizations, configurable job roles, employee defaults, exact
 weight constraints, migration checks and authorization plan. The original migration
 closed application access; Issue #21 adds verified
-per-restaurant memberships and roster policies. There are no frontend database calls.
-The browser-local roster and calculation behavior remain the current product.
+per-restaurant memberships and roster policies. Issue #31 adds only a separate
+[membership-aware read-only roster](SHARED-ROSTER.md); the browser-local roster
+and calculation behavior remain unchanged.
 
 Roster conventions in this foundation: one organization represents one restaurant;
 an employee's required default role belongs to that organization; `NULL` default

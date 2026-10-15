@@ -12,6 +12,13 @@ vi.mock('./supabase', async importOriginal => ({
   ...await importOriginal<typeof import('./supabase')>(), getAuthRuntime: vi.fn(),
 }));
 
+// This suite retains the Auth/calculator assertions; transport coverage lives in
+// SharedRoster.test.tsx. Give the new reader an explicit no-membership response.
+vi.mock('./sharedRoster', async importOriginal => ({
+  ...await importOriginal<typeof import('./sharedRoster')>(),
+  readOrganizations: vi.fn(async () => []),
+}));
+
 const project = 'https://fictional-project.example.test';
 const userA = { id: 'fictional-a', email: 'preview-a@example.test', user_metadata: { role: 'admin' } } as unknown as User;
 const userB = { id: 'fictional-b', email: 'preview-b@example.test' } as User;

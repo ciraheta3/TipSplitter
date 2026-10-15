@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Calculator from './Calculator';
+import SharedRoster from './SharedRoster';
 import { accountRosterKey } from './supabase';
 import type { AuthRuntime } from './supabase';
 import { useAuth } from './useAuth';
@@ -19,6 +20,7 @@ export default function AuthGate({ runtime }: { runtime: Extract<AuthRuntime, { 
         <button className={buttonClass} onClick={() => void auth.signOut()} disabled={auth.busy}>Sign out</button>
       </header>
       <p className="bg-blue-50 p-4 text-center text-sm">Signing in does not grant restaurant membership. This calculator uses your browser-local preview roster only.</p>
+      <SharedRoster key={`shared:${storageKey}`} client={runtime.client} userId={auth.user.id} />
       <Calculator key={storageKey} storageKey={storageKey} />
     </>;
   }

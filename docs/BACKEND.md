@@ -8,6 +8,10 @@ They create no hosted project, login flow, client SDK or frontend connection.
 The optional local integration harness exercises the actual Auth and REST APIs.
 The existing React application still uses its browser-local roster.
 
+Issue #31 adds a separate [read-only frontend roster](SHARED-ROSTER.md) using the
+existing four tables, SELECT grants and RLS. It neither changes this security model
+nor supplies provisioning or exact numeric transport. The calculator stays local.
+
 ## Entities and tenant boundary
 
 One `organization` represents one restaurant/workspace. The MVP can have a single

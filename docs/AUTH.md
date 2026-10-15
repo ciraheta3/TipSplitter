@@ -2,9 +2,10 @@
 
 TipSplitter supports email/password sign-in and sign-out using the maintained
 `@supabase/supabase-js` SDK. This is a browser-local calculation preview with a
-DEV login gate. It does not read or write application tables, synchronize rosters,
-provision memberships, or deploy anything. Authentication alone grants no restaurant
-membership. Database RLS, not the browser gate, authorizes future tenant access.
+DEV login gate. Issue #31 adds a separate [membership-aware read-only roster](SHARED-ROSTER.md)
+using existing application tables. It does not synchronize rosters, provision
+memberships or deploy anything. Authentication alone grants no restaurant
+membership. Database RLS, not the browser gate, authorizes tenant access.
 
 ## Set up your local browser frontend
 
@@ -85,12 +86,12 @@ create **one** account with **no** memberships or application rows.
    with the same temporary account, its roster is empty because browser storage
    is separate. This proves no cloud synchronization, not cross-account isolation;
    automated mocked tests exercise two distinct account UUIDs on one device.
-6. As this user has no restaurant membership, it receives only its local preview.
-   No organizations, tenant employees, role/admin controls, invitations or shared
-   roster should appear. In Network, verify that the app makes Auth requests only,
-   with **no `/rest/v1` application-table calls**. There is no table-access UI to
-   bypass. Membership/RLS authorization is covered by the separately owner-reported
-   hosted suite, not newly tested by this frontend checklist.
+6. As this user has no restaurant membership, expect **No restaurant access assigned**
+   and the local preview, with no shared employees or privileged controls. Issue #31
+   now makes an own-active-membership GET after verified Auth; it must not query
+   roles/employees for a nonmember. Use the [shared roster worksheet](SHARED-ROSTER.md)
+   for additional separately approved membership scenarios. Mocked UI tests do not
+   establish hosted RLS authorization.
 7. While online, click **Sign out**. The dashboard and its drafts must disappear
    immediately; login returns. Reload and use browser Back/Forward: authenticated
    content must stay hidden until another successful sign-in. A second normal tab
@@ -142,9 +143,10 @@ create **one** account with **no** memberships or application rows.
 - Namespacing prevents accidental UI disclosure across accounts. It is not encryption
   or protection from someone with DevTools, a shared browser profile, injected code
   or direct filesystem access. Use fictional DEV data and separate browser profiles.
-- No public signup, reset, recovery, invite, self-provisioning, MFA, OAuth, organization
-  selector, membership writes, application-table client, new migration or deployment
-  is implemented. Production readiness, email delivery/lifecycle, real browser
+- No public signup, reset, recovery, invite, self-provisioning, MFA, OAuth,
+  membership writes, new migration or deployment is implemented. Issue #31 adds
+  only an organization selector and application-table reads behind this gate.
+  Production readiness, email delivery/lifecycle, real browser
   refresh/expiry and hosted login remain owner-manual verification, not mock-test
   claims. Existing local full-stack harness and calculation engine stay unchanged.
 
