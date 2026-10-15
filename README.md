@@ -18,9 +18,9 @@ For a $100.00 pool with weights 100:50, cent mode previews $66.66 and $33.33 wit
 
 The client uses React 19, TypeScript 6, Vite 8, and Tailwind CSS 4. [src/App.tsx](src/App.tsx) selects local preview or the DEV Auth gate; [src/Calculator.tsx](src/Calculator.tsx) handles the unchanged calculator inputs and browser-local roster. See [frontend Auth setup and acceptance](docs/AUTH.md). The pure TypeScript engine in [src/calculation.ts](src/calculation.ts) parses money into integer cents, scales weights to integer hundredths, and uses BigInt intermediates for exact proportional arithmetic and signed reconciliation.
 
-Vitest preserves the original 75-test foundation (60 calculation and 15 interface tests) and adds mocked authentication/configuration tests using React Testing Library, user-event, jest-dom, and jsdom; ESLint and TypeScript check the source. GitHub Actions runs tests, lint, and the production build on pull requests and pushes to `main`.
+Vitest runs 122 automated frontend tests: 60 calculation tests, 15 calculator interface tests, 28 mocked Auth tests, and 19 configuration/request/storage-isolation tests. ESLint and TypeScript also check the source. GitHub Actions runs frontend tests, lint, and the production build on pull requests and pushes to `main`. GitHub Actions runs tests, lint, and the production build on pull requests and pushes to `main`.
 
-A PostgreSQL roster schema is implemented in versioned migrations, with organization-scoped roles and employees, exact weights, same-tenant constraints, and deny-by-default RLS and table privileges. Merged memberships authorize active admins and closers within their own restaurant. A separate local Supabase harness verifies real Auth/PostgREST authorization; the frontend now supports Auth only, with no application-table connection. See [backend design and verification](docs/BACKEND.md). A separate CI job checks the database schema.
+Versioned PostgreSQL migrations define organization-scoped roles, employees, and memberships, with exact weights, same-tenant constraints, and deny-by-default RLS and table privileges. Active admins and closers are authorized within their restaurant. A separate local Supabase harness verifies real Auth/PostgREST authorization. The frontend has optional DEV Auth but no application-table connection; Issue #31's membership-aware organization context and read-only shared roster are in progress and are not in merged `main`. See [backend design and verification](docs/BACKEND.md). A separate CI job checks the database schema.
 
 ## Development
 
@@ -45,11 +45,13 @@ The explicitly marked local-only prototype needs no backend services or credenti
 
 For an isolated hosted development project, follow the [owner-controlled Supabase
 DEV guide](docs/HOSTED-DEV.md). It includes manual setup/migrations and explicitly
-approved synthetic authorization verification. Issue #29 records **owner-reported** completed hosted authorization verification
-(4,944 HTTP requests), catalog/security audit, persisted comparison and cleanup of
-all seven temporary users/fictional rows. Codex has not independently rerun it.
-`npm run check:hosted-preflight` tests only local safety guards; no hosted workflow
-runs automatically. Browser login/logout acceptance remains owner-manual after PR review.
+approved synthetic authorization verification. Issue #29 records **owner-reported** hosted authorization verification (4,944 HTTP
+requests), catalog/security audit, persisted comparison and cleanup of all seven
+temporary users/fictional rows. PR #30 also records owner-reported DEV browser
+login/logout acceptance; individual outcomes and temporary-account cleanup were not
+independently documented there. Codex did not access hosted DEV or run browser
+acceptance. `npm run check:hosted-preflight` tests only local safety guards; no
+hosted workflow runs automatically.
 
 ### VS Code Dev Container
 
@@ -63,7 +65,7 @@ Vite binds to `0.0.0.0` inside the container through `VITE_DEV_HOST`; outside it
 - No lunch/dinner shift records, finalization, immutable history, or actual payout ledger exist. Preview allocations must not be treated as historical payments.
 - Adjustments, automatic leftover allocation, reports, exports, and offline synchronization are not implemented. Money and weights accept nonnegative plain decimals with at most two fractional digits; invalid or unsafe values are rejected rather than rounded.
 
-Future work includes tenant-scoped access, shared rosters, separate shifts, immutable payout history, adjustments and reconciliation, reporting/export, and eventual offline capabilities. Sequencing and business rules remain provisional. [ROADMAP.md](ROADMAP.md) records the merged calculation, development environment, roster schema, and interface-testing milestones alongside future work.
+Tenant-scoped schema authorization and optional DEV sign-in are implemented. Membership-aware organization context and a read-only shared roster are in progress in Issue #31 and are not part of merged `main`; shared roster editing/synchronization, trusted account administration and invitations, separate shifts, immutable payout history, adjustments and reconciliation, reporting/export, offline sync, and launch hardening remain future work. Sequencing and business rules remain provisional. [ROADMAP.md](ROADMAP.md) records merged milestones and later work.
 
 ## Project documentation
 
