@@ -69,3 +69,13 @@ adjustments, finalization and historical-payout decisions above remain open.
 - Money and displayed weights accept nonnegative plain decimals with at most two fractional digits. Extra precision, scientific notation, and unsafe amounts are rejected rather than silently rounded. This matches the original 0.01 input steps; higher weight precision needs a separate decision.
 
 [SPEC.md](../SPEC.md) defines the current engineering contract; this PRD defines product direction and open decisions. [ROADMAP.md](../ROADMAP.md) summarizes milestones.
+
+## DEV authentication milestone (Issue #29)
+
+Optional hosted DEV email/password authentication gates the existing local preview.
+[AUTH.md](AUTH.md) defines configuration and owner-manual acceptance. Verified users
+have separate browser-local roster storage per project/account; legacy data is not
+automatically imported. Sign-in does not grant restaurant membership. No shared
+roster/table access, provisioning, lifecycle administration or financial-policy
+changes are included. Import, retention, recovery and synchronization decisions
+remain open.
