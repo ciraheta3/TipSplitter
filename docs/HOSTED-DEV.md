@@ -6,14 +6,16 @@ cleanup of all seven temporary Auth users and fictional application rows. Codex 
 not execute or independently verify these hosted actions. The owner reports email/
 password and email confirmation enabled, public signup/anonymous login disabled,
 GitHub deployment integration disconnected and automatic Data API exposure disabled.
-DEV currently has no test users or application data. Production and account lifecycle
-capabilities remain untested; this evidence does not establish browser login/refresh.
+DEV currently has no test users or application data. PR #30 separately records
+owner-reported DEV browser login/logout acceptance; individual outcomes and
+synthetic-account cleanup were not independently documented there. This does not
+establish refresh/expiry, production or account-lifecycle readiness.
 
 This guide retains the original project preparation/seven-user authorization
-procedure for reference; do not rerun it for frontend acceptance. For Issue #29's
-optional login/logout UI and **one-user** owner-manual check, use [AUTH.md](AUTH.md).
-The frontend roster remains browser-local. No hosted access or changes by Codex are
-authorized by either guide.
+procedure for reference; do not rerun it for frontend acceptance. Use [AUTH.md](AUTH.md)
+for the optional login/logout UI checklist and its reported status. The frontend
+roster remains browser-local. No hosted access or changes by Codex are authorized
+by either guide.
 
 ## Approval boundaries
 
@@ -362,7 +364,8 @@ passwords, keys, tokens, config, SQL artifacts, account exports or screenshots.
 
 Unverified beyond this procedure: hosted email delivery/confirmation/signup,
 recovery, refresh/expiry flows, invitations/MFA for application users, numeric-text
-transport, browser login/sync, backup restoration and production readiness. A
+transport, shared-roster sync, backup restoration and production readiness. Browser
+login/logout was owner-reported in PR #30, not independently executed by Codex. A
 successful synthetic authorization run does not establish these. Privileged
 service-role application denials are checked via effective SQL ACLs, not by giving
 that privileged key to the HTTP verifier.
