@@ -14,7 +14,7 @@ The unconfigured local-only prototype needs no backend and is unchanged.
   project/account key unmounts all shared state on account/project changes. The
   existing gate unmounts it immediately on sign-out, failed verification or expiry.
   `useAuth.ts`, `Calculator.tsx`, storage keys and the allocation engine are unchanged.
-- `sharedRoster.ts` uses the existing publishable-key/session SDK client. It reads
+- `sharedRosterData.ts` uses the existing publishable-key/session SDK client. It reads
   only `organization_memberships`, `organizations`, `job_roles` and `employees`.
   Membership reads explicitly filter the verified UUID and `is_active=true`, even
   though an admin's RLS policy could expose other members. No metadata role/email
@@ -151,3 +151,27 @@ Validation rerun after reconciliation (Node 24.19.0 / npm 11.9.0):
 
 PR #34 remains open for independent review and separately approved owner-run DEV
 acceptance. GitHub Actions and mergeability results are recorded in the PR.
+
+
+## Filesystem portability fix
+
+Mac validation of `d76620d` was owner-reported as 111/153 tests passing, 42 failing
+and 35 unhandled errors. The component `SharedRoster.tsx` and former adapter
+`sharedRoster.ts` had the same case-insensitive extensionless basename. Vite tries
+`.ts` before `.tsx`; a controlled Linux resolver fixture modeling case-insensitive
+lookup selected the adapter for `./SharedRoster`, with no default component export.
+This confirms the import-resolution collision underlying the reported AuthGate error;
+it is not a native macOS test run.
+
+The adapter is now `sharedRosterData.ts`. Component/adapter imports, the Auth test
+mock and documentation use the distinct name; `SharedRoster.tsx` retains its default
+component export. Adapter contents, behavior, assertions, calculator and authorization
+boundaries are unchanged. After the rename, the repository-wide scan found no
+case-insensitive file/directory or extensionless module-basename collisions.
+
+`npm run check` passed all 153 tests, ESLint, TypeScript and the Vite production
+build on Linux (Node 24.19.0 / npm 11.9.0). Vite resolver checks select
+`SharedRoster.tsx` for `./SharedRoster` and `sharedRosterData.ts` for
+`./sharedRosterData`. Adapter bytes and all existing test assertions are unchanged;
+native macOS rerun remains owner validation. No hosted access, database/security
+change or calculator change was performed.

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { accessChanged, readOrganizations, readSharedRoster, SharedRosterError } from './sharedRoster';
-import type { Organization, SharedRosterData } from './sharedRoster';
+import { accessChanged, readOrganizations, readSharedRoster, SharedRosterError } from './sharedRosterData';
+import type { Organization, SharedRosterData } from './sharedRosterData';
 
 const buttonClass = 'rounded border border-blue-700 text-blue-800 px-4 py-2 disabled:opacity-50';
 type Props = { client: SupabaseClient; userId: string };

@@ -14,8 +14,8 @@ vi.mock('./supabase', async importOriginal => ({
 
 // This suite retains the Auth/calculator assertions; transport coverage lives in
 // SharedRoster.test.tsx. Give the new reader an explicit no-membership response.
-vi.mock('./sharedRoster', async importOriginal => ({
-  ...await importOriginal<typeof import('./sharedRoster')>(),
+vi.mock('./sharedRosterData', async importOriginal => ({
+  ...await importOriginal<typeof import('./sharedRosterData')>(),
   readOrganizations: vi.fn(async () => []),
 }));
 

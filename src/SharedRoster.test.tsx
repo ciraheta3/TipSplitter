@@ -9,7 +9,7 @@ import type { AuthChangeEvent, Session, SupabaseClient, User } from '@supabase/s
 import SharedRoster from './SharedRoster';
 import AuthGate from './AuthGate';
 import { accountRosterKey } from './supabase';
-import { readOrganizations } from './sharedRoster';
+import { readOrganizations } from './sharedRosterData';
 
 const userA = { id: 'fictional-user-a', email: 'preview-a@example.test' } as User;
 const userB = { id: 'fictional-user-b', email: 'preview-b@example.test' } as User;
