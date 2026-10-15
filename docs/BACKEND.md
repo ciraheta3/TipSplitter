@@ -4,12 +4,14 @@ PostgreSQL provides exact numeric storage, foreign keys, transactions and row-le
 security (RLS). Supabase is the intended managed PostgreSQL/Auth platform for the
 future shared application. The migrations use Supabase API role names and reference
 its managed Auth identities.
-They create no hosted project, login flow, client SDK or frontend connection.
-The optional local integration harness exercises the actual Auth and REST APIs.
-The existing React application still uses its browser-local roster.
+The migrations create no hosted project or frontend application-table connection.
+The app now has optional DEV Auth; calculator rosters remain browser-local. The
+optional local integration harness exercises actual Auth and REST APIs. The merged
+baseline through PR #33 has no frontend application-table reads.
 
-Issue #31 adds a separate [read-only frontend roster](SHARED-ROSTER.md) using the
-existing four tables, SELECT grants and RLS. It neither changes this security model
+PR #34 (Issue #31), implemented on this branch but still unmerged, proposes a
+separate [read-only frontend roster](SHARED-ROSTER.md) using the existing four
+tables, SELECT grants and RLS. It neither changes this security model
 nor supplies provisioning or exact numeric transport. The calculator stays local.
 
 ## Entities and tenant boundary
@@ -150,10 +152,14 @@ to close access during an incident, first revoke authenticated roster grants
 (including column grants) and helper execution through a trusted operation. Dropping membership records/tables
 as a rollback would lose authorization metadata and must not be automated.
 
-Owner-reported hosted Auth/API validation is recorded below. Next work remains trusted account administration and
-shared roster sync with exact numeric transport and explicit localStorage import.
-Shift participation, finalization/reopening, invitations and historical snapshots
-remain separate work. No financial logic or browser-local behavior changes here.
+Owner-reported hosted Auth/API validation is recorded below. PR #34 proposes
+membership-aware organization context and a read-only shared roster; the merged
+baseline through PR #33 makes no frontend application-table requests. This branch
+implements the proposal, with shared-roster DEV acceptance still pending. Trusted
+account administration, invitations, shared roster editing/synchronization with exact
+numeric transport and explicit localStorage import remain future work. Shift
+participation, finalization/reopening and historical snapshots remain separate work.
+No financial logic or browser-local behavior changes here.
 
 ## Environments, migrations and verification
 
@@ -171,11 +177,13 @@ With Node 24, Bash and a running **local** Docker daemon at
 ```bash
 npm ci
 npm audit
-npm run check       # 75 frontend tests, lint, TypeScript/build; no SQL verification
+npm run check       # All frontend tests, lint, TypeScript/build; no SQL verification
 npm run check:db    # Two disposable PostgreSQL migration/security replays
 ```
 
-`check:db` retains its existing separate CI job. It uses `postgres:17-bookworm`,
+The merged Auth baseline has 122 frontend tests; PR #34 adds 31 read-only roster
+tests (153 total on this branch). `check:db` retains its existing separate CI job.
+It uses `postgres:17-bookworm`,
 no network, no published ports, a tmpfs database and cleanup on exit. It applies
 all ordered migrations on two clean databases with `psql -X --set=ON_ERROR_STOP=1`.
 `supabase/tests/bootstrap.sql` creates **simulated** API roles/default grants,
@@ -338,7 +346,7 @@ The [owner setup and hosted verification guide](HOSTED-DEV.md) provides dedicate
 non-production project creation, separate approval gates, ledger-aware migration
 commands, trusted synthetic provisioning, opt-in HTTP verification, independent
 database comparison and narrowly scoped manual cleanup. Hosted access is **not
-authorized by this preparation**. No hosted project has been accessed or modified by Codex in this frontend task. Issue #29 records owner-reported hosted DEV authorization verification: 4,944 HTTP requests, security audit, persisted comparison and cleanup of all seven temporary users and fictional application rows. Browser login/refresh, production and account lifecycle capabilities remain separate and unverified by Codex. See [frontend Auth acceptance](AUTH.md).
+authorized by this preparation**. No hosted project has been accessed or modified by Codex in this frontend task. Issue #29 records owner-reported hosted DEV authorization verification: 4,944 HTTP requests, security audit, persisted comparison and cleanup of all seven temporary users and fictional application rows. The owner reports completing DEV browser login/logout acceptance in PR #30; individual outcomes and temporary-account cleanup were not independently documented there. Codex did not execute browser acceptance. Refresh/expiry, production and account-lifecycle capabilities remain unverified by Codex. See [frontend Auth acceptance](AUTH.md).
 
 | Verification layer | Evidence | Current status |
 | --- | --- | --- |

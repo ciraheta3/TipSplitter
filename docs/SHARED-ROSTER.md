@@ -1,8 +1,11 @@
 # Membership-aware shared roster (Issue #31)
 
-The configured DEV frontend now has a separate **Shared roster · DEV · Read only**
-section below verified Auth. The calculator still uses only its project/account
-browser-local roster; neither roster is synchronized or imported into the other.
+PR #34 proposes this milestone and remains unmerged. The merged baseline through
+PR #33 includes optional DEV Auth and 122 tests, with no frontend application-table
+reads. On the PR #34 branch, the configured DEV frontend adds a separate
+**Shared roster · DEV · Read only** section below verified Auth. The calculator
+still uses only its project/account browser-local roster; neither roster is
+synchronized or imported into the other.
 The unconfigured local-only prototype needs no backend and is unchanged.
 
 ## Read contract and security boundaries
@@ -125,3 +128,26 @@ Local Node 24.19.0 / npm 11.9.0, starting from merged `main`
 Mocked filtering/transport assertions validate client behavior, not real PostgREST
 authorization. Actual local Auth/PostgREST and owner-approved hosted/browser checks
 remain separate from frontend tests and disposable PostgreSQL assertions.
+
+## Reconciliation with merged PR #33
+
+Merged the fetched `main` at `de8543f` (Issue #32 / PR #33) into the existing
+Issue #31 branch using a normal merge, retaining the published `636f396` history.
+Reconciled README, ROADMAP, AUTH, BACKEND, HOSTED-DEV and PRD documentation to
+preserve the completed milestones and owner-reported evidence. The 122-test merged
+Auth baseline, proposed 153-test read-only roster branch, pending shared-roster DEV
+acceptance and future editing/lifecycle/financial work are distinguished explicitly.
+The adapter, UI, authorization checks, calculator, tests, migrations, RLS/grants,
+dependencies, integration harnesses and CI configuration are unchanged by this merge.
+
+Validation rerun after reconciliation (Node 24.19.0 / npm 11.9.0):
+
+- `npm run check`: all 153 tests, ESLint, TypeScript and production build passed.
+- `npm run check:db`: both clean PostgreSQL 17.11 migration/security replays passed.
+- `npm run check:hosted-preflight`: all 25 offline/mocked safety checks passed.
+- No environmental limitation blocked these three checks. The earlier full-stack
+  CLI limitation above remains historical; `check:supabase` was not rerun for this
+  documentation reconciliation. No hosted access or owner acceptance was performed.
+
+PR #34 remains open for independent review and separately approved owner-run DEV
+acceptance. GitHub Actions and mergeability results are recorded in the PR.

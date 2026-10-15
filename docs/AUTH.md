@@ -2,9 +2,10 @@
 
 TipSplitter supports email/password sign-in and sign-out using the maintained
 `@supabase/supabase-js` SDK. This is a browser-local calculation preview with a
-DEV login gate. Issue #31 adds a separate [membership-aware read-only roster](SHARED-ROSTER.md)
-using existing application tables. It does not synchronize rosters, provision
-memberships or deploy anything. Authentication alone grants no restaurant
+DEV login gate, merged in PR #30. PR #34 (Issue #31) proposes a separate
+[membership-aware read-only roster](SHARED-ROSTER.md) using existing application
+tables; it is implemented on this branch and remains unmerged. It does not
+synchronize rosters, provision memberships or deploy anything. Authentication alone grants no restaurant
 membership. Database RLS, not the browser gate, authorizes tenant access.
 
 ## Set up your local browser frontend
@@ -49,6 +50,10 @@ is historical setup/authorization guidance, not a prerequisite to rerun its
 seven-user fixture for this login check.
 
 ## Owner-only manual acceptance with one temporary fictional user
+
+PR #30 records owner-reported login/logout acceptance, with the evidence limits
+recorded below. Step 6 describes the proposed PR #34 no-membership behavior;
+shared-roster DEV acceptance remains pending and requires separate owner approval.
 
 Keep private notes of the exact reviewed commit, DEV project, test account UUID,
 checks and cleanup. Use no real employee/restaurant data. These steps deliberately
@@ -144,11 +149,14 @@ create **one** account with **no** memberships or application rows.
   or protection from someone with DevTools, a shared browser profile, injected code
   or direct filesystem access. Use fictional DEV data and separate browser profiles.
 - No public signup, reset, recovery, invite, self-provisioning, MFA, OAuth,
-  membership writes, new migration or deployment is implemented. Issue #31 adds
-  only an organization selector and application-table reads behind this gate.
-  Production readiness, email delivery/lifecycle, real browser
-  refresh/expiry and hosted login remain owner-manual verification, not mock-test
-  claims. Existing local full-stack harness and calculation engine stay unchanged.
+  membership writes, new migration or deployment is implemented. The merged Auth
+  milestone has no organization selector or application-table client; PR #34
+  proposes only a selector and read-only application-table access behind this gate.
+  The owner reports completing DEV browser login/logout acceptance (PR #30);
+  item-by-item outcomes and temporary-account cleanup were not independently
+  documented there. Codex did not perform browser acceptance. Production readiness,
+  email delivery/lifecycle and real browser refresh/expiry remain unverified. Existing
+  local full-stack harness and calculation engine stay unchanged.
 
 Official guidance reviewed for this implementation:
 [React/Vite Auth](https://supabase.com/docs/guides/auth/quickstarts/react),
@@ -158,7 +166,10 @@ Official guidance reviewed for this implementation:
 [sign-out scopes](https://supabase.com/docs/reference/javascript/auth-signout), and
 [API keys](https://supabase.com/docs/guides/api/api-keys).
 
-## Validation of this change
+## Validation of the merged Auth milestone (PR #30)
+
+The following historical evidence is preserved from PR #30. For PR #34 validation
+and pending shared-roster acceptance, see [SHARED-ROSTER.md](SHARED-ROSTER.md).
 
 Codex Cloud, Node 24.19.0 / npm 11.9.0:
 
@@ -175,6 +186,8 @@ Codex Cloud, Node 24.19.0 / npm 11.9.0:
   Auth/PostgREST integration assertions ran. The harness is unchanged; rerun on
   Mac Terminal with Node 24 and Docker Desktop using `npm ci` followed by
   `npm run check:supabase`. Prior owner-reported Mac evidence is separate.
-- No hosted project was connected, linked, modified or deployed. Hosted/browser
-  login, logout, refresh and the manual checklist above have **not** been executed
-  by Codex. The owner retains configuration and acceptance testing after PR review.
+- No hosted project was connected, linked, modified or deployed by Codex. Codex did
+  not execute browser login/logout, refresh or the manual checklist above. PR #30
+  records the owner's report that the DEV login/logout checklist was exercised; its
+  individual outcomes and temporary-account cleanup were not independently documented
+  there. Hosted refresh/expiry and production acceptance remain unverified.
