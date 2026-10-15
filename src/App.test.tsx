@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import App from './App';
+import Calculator from './Calculator';
 
 const metric = (name: string) => within(screen.getByRole('group', { name }));
 const employee = (name: string) => metric(`Employee ${name}`);
@@ -36,7 +36,7 @@ afterEach(() => {
 describe('TipSplitter interface', () => {
   it('combines cash and credit, including blank fields as zero', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    render(<Calculator storageKey="employees" />);
     expect(metric('Total Tip').getByText('$0.00')).toBeVisible();
     await user.type(screen.getByRole('textbox', { name: 'Cash Tips ($)' }), '12.34');
     expect(metric('Total Tip').getByText('$12.34')).toBeVisible();
@@ -48,7 +48,7 @@ describe('TipSplitter interface', () => {
 
   it('adds and removes employees with fractional and zero weights', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    render(<Calculator storageKey="employees" />);
     await addEmployee(user, 'Test Avery', '12.5');
     await addEmployee(user, 'Test Blake', '0');
     expect(employee('Test Avery').getByText('Weight: 12.5')).toBeVisible();
@@ -65,7 +65,7 @@ describe('TipSplitter interface', () => {
 
   it('floors weighted cent payouts and toggles whole dollars without redistributing leftovers', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    render(<Calculator storageKey="employees" />);
     await addEmployee(user, 'Test Avery', '100');
     await addEmployee(user, 'Test Blake', '50');
     await user.type(screen.getByRole('textbox', { name: 'Cash Tips ($)' }), '100');
@@ -101,7 +101,7 @@ describe('TipSplitter interface', () => {
     ['Cash Tips ($)', '90071992547409.92'],
   ])('hides stale payouts for invalid %s input %s and recovers after correction', async (label, invalid) => {
     const user = userEvent.setup();
-    render(<App />);
+    render(<Calculator storageKey="employees" />);
     await addEmployee(user, 'Test Avery', '100');
     const input = screen.getByRole('textbox', { name: label });
     await user.type(input, '10');
@@ -122,7 +122,7 @@ describe('TipSplitter interface', () => {
 
   it('rejects whitespace-only employee names and clears the error on a valid add', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    render(<Calculator storageKey="employees" />);
     await addEmployee(user, '   ', '100');
     expect(screen.getByRole('alert')).toHaveTextContent('Name and job title are required.');
     expect(localStorage.getItem('employees')).toBeNull();
@@ -134,7 +134,7 @@ describe('TipSplitter interface', () => {
 
   it('persists roster edits across remounts while cash and credit drafts reset', async () => {
     const user = userEvent.setup();
-    const first = render(<App />);
+    const first = render(<Calculator storageKey="employees" />);
     await addEmployee(user, 'Test Avery', '100');
     await addEmployee(user, 'Test Blake', '50');
     await user.click(screen.getByRole('button', { name: 'Remove Test Blake' }));
@@ -145,7 +145,7 @@ describe('TipSplitter interface', () => {
     await user.type(screen.getByRole('textbox', { name: 'Credit Tips ($)' }), '60');
     expect(employee('Test Avery').getByText('$100.00')).toBeVisible();
     first.unmount();
-    render(<App />);
+    render(<Calculator storageKey="employees" />);
     expect(employee('Test Avery').getByText('Weight: 100')).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Remove Test Blake' })).not.toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Cash Tips ($)' })).toHaveValue('');
@@ -156,7 +156,7 @@ describe('TipSplitter interface', () => {
 
   it.each(['empty', 'zero-weight'] as const)('leaves the full pool unassigned for an %s roster in both modes', async kind => {
     const user = userEvent.setup();
-    render(<App />);
+    render(<Calculator storageKey="employees" />);
     if (kind === 'zero-weight') await addEmployee(user, 'Test Zero', '0');
     await user.type(screen.getByRole('textbox', { name: 'Cash Tips ($)' }), '100');
     for (const wholeDollar of [false, true]) {
@@ -172,7 +172,7 @@ describe('TipSplitter interface', () => {
 
   it('keeps a zero-weight employee at zero beside a positive-weight employee', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    render(<Calculator storageKey="employees" />);
     await addEmployee(user, 'Test Zero', '0');
     await addEmployee(user, 'Test Avery', '100');
     await user.type(screen.getByRole('textbox', { name: 'Credit Tips ($)' }), '10.25');
@@ -185,7 +185,7 @@ describe('TipSplitter interface', () => {
   it('reports unreadable saved data without overwriting it on mount', async () => {
     const user = userEvent.setup();
     localStorage.setItem('employees', '{broken');
-    render(<App />);
+    render(<Calculator storageKey="employees" />);
     expect(screen.getByRole('alert')).toHaveTextContent('Saved roster could not be read.');
     expect(localStorage.getItem('employees')).toBe('{broken');
     await addEmployee(user, 'Test Avery', '100');
@@ -200,7 +200,7 @@ describe('TipSplitter interface', () => {
     localStorage.setItem('employees', JSON.stringify([
       { id: 'synthetic-invalid', name: 'Test Invalid', jobTitle: 'Test Server', weight: -1 },
     ]));
-    render(<App />);
+    render(<Calculator storageKey="employees" />);
     await user.type(screen.getByRole('textbox', { name: 'Cash Tips ($)' }), '100');
     expect(screen.getByRole('alert')).toHaveTextContent('Weight must be nonnegative');
     expect(employee('Test Invalid').getByText('—')).toBeVisible();

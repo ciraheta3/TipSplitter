@@ -27,7 +27,7 @@ Financial formulas, leftover policy, storage key/shape, and draft persistence po
 
 ## Authentication coverage (Issue #29)
 
-The original 60 engine and 15 calculator tests remain unchanged. `src/Auth.test.tsx`
+The original 60 engine tests and all behavioral assertions in the 15 calculator UI tests are preserved. `src/Auth.test.tsx`
 adds 28 mocked Supabase React tests for the login gate, initial restoration and verified
 identity, sign-in/errors, pending submissions, invalid/expired sessions, logout and
 retry, refresh/focus events, expiry, stale responses, StrictMode cleanup, account/
@@ -42,3 +42,31 @@ their existing scope: offline safety guards and a disposable local full stack.
 [AUTH.md](AUTH.md) gives exact owner-only browser acceptance and synthetic cleanup
 steps. Mock tests do not establish hosted/browser login, email delivery or
 production readiness.
+
+## Calculator test isolation (PR #30 follow-up)
+
+The owner reproduced 15 failures in `src/App.test.tsx` with valid Supabase values
+in ignored `.env.local`, while the other 107 tests passed. Those tests rendered
+`App`, whose configured mode correctly shows the initial authentication gate
+instead of the calculator. This was a test-isolation defect, not an auth-gate bug.
+
+The calculator suite now imports `Calculator` directly and renders
+`<Calculator storageKey="employees" />`, including the persistence remount. All
+15 existing tests retain every behavioral assertion. `src/Auth.test.tsx` continues
+to render `App` with mocked configured, unconfigured and invalid configuration
+modes. Production code and authentication behavior are unchanged.
+
+Verified on 2026-10-15 with Node 24.19.0 / npm 11.9.0 using a temporary source
+snapshot that excludes ignored env files; the real `.env.local` was not read,
+copied or modified. Before the fix, `npm test` with fictional configured values
+reproduced **15 failed / 107 passed**. After the fix:
+
+| Frontend environment | `npm run check` | `npm run check:hosted-preflight` |
+| --- | --- | --- |
+| Both Supabase variables unset | 122 tests, lint, TypeScript/build passed | 25 passed |
+| Safe fictional URL and publishable key | 122 tests, lint, TypeScript/build passed | 25 passed |
+
+The fictional values were `https://aaaaaaaaaaaaaaaaaaaa.supabase.co` and
+`sb_publishable_fictional_placeholder`, supplied only to the test/build processes.
+No real hosted project was accessed. No production authentication code, local
+configuration, schema, migrations, RLS or integration harness was changed.
