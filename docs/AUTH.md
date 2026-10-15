@@ -144,9 +144,11 @@ create **one** account with **no** memberships or application rows.
   or direct filesystem access. Use fictional DEV data and separate browser profiles.
 - No public signup, reset, recovery, invite, self-provisioning, MFA, OAuth, organization
   selector, membership writes, application-table client, new migration or deployment
-  is implemented. Production readiness, email delivery/lifecycle, real browser
-  refresh/expiry and hosted login remain owner-manual verification, not mock-test
-  claims. Existing local full-stack harness and calculation engine stay unchanged.
+  is implemented. The owner reports completing DEV browser login/logout acceptance
+  (PR #30); item-by-item outcomes and temporary-account cleanup were not independently
+  documented there. Codex did not perform browser acceptance. Production readiness,
+  email delivery/lifecycle and real browser refresh/expiry remain unverified. Existing
+  local full-stack harness and calculation engine stay unchanged.
 
 Official guidance reviewed for this implementation:
 [React/Vite Auth](https://supabase.com/docs/guides/auth/quickstarts/react),
@@ -173,6 +175,8 @@ Codex Cloud, Node 24.19.0 / npm 11.9.0:
   Auth/PostgREST integration assertions ran. The harness is unchanged; rerun on
   Mac Terminal with Node 24 and Docker Desktop using `npm ci` followed by
   `npm run check:supabase`. Prior owner-reported Mac evidence is separate.
-- No hosted project was connected, linked, modified or deployed. Hosted/browser
-  login, logout, refresh and the manual checklist above have **not** been executed
-  by Codex. The owner retains configuration and acceptance testing after PR review.
+- No hosted project was connected, linked, modified or deployed by Codex. Codex did
+  not execute browser login/logout, refresh or the manual checklist above. PR #30
+  records the owner's report that the DEV login/logout checklist was exercised; its
+  individual outcomes and temporary-account cleanup were not independently documented
+  there. Hosted refresh/expiry and production acceptance remain unverified.
