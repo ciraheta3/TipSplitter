@@ -20,8 +20,12 @@ These milestones provide a browser-local calculation preview and a closed databa
 Membership authorization merged in PR #22, and the real local Supabase Auth/PostgREST
 workflow merged in PR #24 (owner-reported full Mac pass). Issue #25 prepares the
 first isolated hosted DEV environment with [manual owner setup](docs/HOSTED-DEV.md)
-and opt-in synthetic verification. Hosted checks remain **unexecuted**. Frontend
-login, synchronization, invitations and trusted account administration remain future work.
+and opt-in synthetic verification. Issue #29 records owner-reported hosted authorization verification (4,944 HTTP
+requests), security audit, persisted comparison and cleanup of all seven temporary
+users/fictional rows; Codex has not independently executed it. Issue #29 adds
+[frontend DEV login/logout](docs/AUTH.md) with isolated browser-local rosters. Real
+browser acceptance remains owner-manual. Synchronization, invitations and trusted
+account administration remain future work.
 
 ## Planned
 
@@ -29,8 +33,8 @@ No delivery dates are committed. Each milestone requires separate scope and revi
 
 1. **Hosted authorization and authentication:** complete owner-approved hosted DEV
    verification before enabling shared data access. Membership-based RLS and local
-   Auth/PostgREST checks exist; frontend authentication and trusted account
-   administration remain unimplemented. See [docs/BACKEND.md](docs/BACKEND.md).
+   Auth/PostgREST checks exist; frontend DEV Auth is implemented in Issue #29; trusted account administration
+   and production readiness remain unimplemented. See [docs/BACKEND.md](docs/BACKEND.md).
 2. **Shared roster:** connect the implemented employee/role schema to the frontend, with exact weight transport, weight inheritance/overrides, localStorage import, and synchronization after access and conflict rules are defined.
 3. **Shifts and immutable history:** model independent lunch/dinner participation, finalization, and immutable snapshots of collected totals and actual payouts; define corrections and audit history before implementation.
 4. **Adjustments and reconciliation:** support early departure and understaffing after interaction rules are agreed; preserve true collected totals and recorded payouts.

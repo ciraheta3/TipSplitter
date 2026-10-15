@@ -18,10 +18,10 @@ Product direction and open business decisions live in [docs/PRD.md](docs/PRD.md)
 
 ## Screen and persistence
 
-- Keep the mobile-first Tailwind dashboard, cash + credit fields, roster add/remove, and `employees` localStorage key. Stored employee shape remains `{ id, name, jobTitle, weight }`, with numeric displayed weights; convert at the calculation boundary.
+- Keep the mobile-first Tailwind dashboard, cash + credit fields, roster add/remove, and legacy `employees` localStorage key in unconfigured local-only mode. Configured DEV Auth uses project/account-namespaced roster keys and never imports the legacy roster; see [Auth contract](docs/AUTH.md). Stored employee shape remains `{ id, name, jobTitle, weight }`, with numeric displayed weights; convert at the calculation boundary.
 - Reject unsafe/invalid stored weights visibly rather than silently changing them. Validate stored row shapes before rendering. Unreadable saved data is left untouched on mount; an explicit roster change saves the new roster. Storage failures show a warning while allowing session-only edits.
 - Label the toggle “Round down to whole dollar.” Display total collected tips, allocated tips, and a signed “Unassigned Remainder” with its meaning. Invalid inputs show errors and unavailable payouts, not plausible fallback numbers.
-- This is a preview. No finalization, actual payout history, adjustment logic, shared accounts, or runtime backend connection exists. Issue #14 adds only the closed roster schema described in [docs/BACKEND.md](docs/BACKEND.md). New rules must never be applied retroactively to future historical records.
+- This is a preview. No finalization, actual payout history, adjustment logic, shared roster or application-table connection exists. Issue #29 adds optional DEV Auth only; it does not change calculation rules. Issue #14 adds only the closed roster schema described in [docs/BACKEND.md](docs/BACKEND.md). New rules must never be applied retroactively to future historical records.
 
 ## Verification
 

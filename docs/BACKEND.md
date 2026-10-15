@@ -146,7 +146,7 @@ to close access during an incident, first revoke authenticated roster grants
 (including column grants) and helper execution through a trusted operation. Dropping membership records/tables
 as a rollback would lose authorization metadata and must not be automated.
 
-Next work remains hosted Auth/API validation, trusted account administration and
+Owner-reported hosted Auth/API validation is recorded below. Next work remains trusted account administration and
 shared roster sync with exact numeric transport and explicit localStorage import.
 Shift participation, finalization/reopening, invitations and historical snapshots
 remain separate work. No financial logic or browser-local behavior changes here.
@@ -187,7 +187,7 @@ CLI **2.120.0** is an exact project development dependency in package.json and t
 lockfile. `supabase/config.toml` is tracked, with PostgreSQL 17, real Auth, public-only
 PostgREST exposure and disabled seeds. Platform automatic default grants remain
 **enabled** so the migrations' revokes are actually exercised. Unused services
-are disabled/excluded to limit resource use. No frontend SDK is installed.
+are disabled/excluded to limit resource use. The separate frontend Auth SDK added in Issue #29 does not participate in this harness.
 Email confirmation is disabled **only for this synthetic local configuration**;
 email delivery, confirmation, recovery and invitations are not verified.
 
@@ -334,7 +334,7 @@ The [owner setup and hosted verification guide](HOSTED-DEV.md) provides dedicate
 non-production project creation, separate approval gates, ledger-aware migration
 commands, trusted synthetic provisioning, opt-in HTTP verification, independent
 database comparison and narrowly scoped manual cleanup. Hosted access is **not
-authorized by this preparation**. No hosted project has been accessed or modified.
+authorized by this preparation**. No hosted project has been accessed or modified by Codex in this frontend task. Issue #29 records owner-reported hosted DEV authorization verification: 4,944 HTTP requests, security audit, persisted comparison and cleanup of all seven temporary users and fictional application rows. Browser login/refresh, production and account lifecycle capabilities remain separate and unverified by Codex. See [frontend Auth acceptance](AUTH.md).
 
 | Verification layer | Evidence | Current status |
 | --- | --- | --- |
@@ -342,7 +342,7 @@ authorized by this preparation**. No hosted project has been accessed or modifie
 | Simulated PostgreSQL | `npm run check:db`: two clean replays, constraints, RLS and effective ACLs with mock Auth claims | Previously passed; run-specific limitations recorded below |
 | Real local Supabase | `npm run check:supabase`: real Auth/PostgREST, managed roles, CLI migration ledger | Owner reports full Mac/Docker Desktop suite passed in merged PR #24; historical Cloud limitations below remain distinct |
 | Hosted safety preflight | `npm run check:hosted-preflight`: offline identity/key/file/CI guards and mocked transport failure checks | Local checks only; does not establish hosted permissions |
-| Hosted DEV | Dashboard/ledger/catalog audits, approved synthetic HTTP suite, trusted persisted-row comparison | **Not executed**; pending owner-created and explicitly approved project |
+| Hosted DEV | Dashboard/ledger/catalog audits, approved synthetic HTTP suite, trusted persisted-row comparison | Owner-reported passed in Issue #29: 4,944 HTTP requests plus audit, persisted comparison and full synthetic cleanup; not independently executed by Codex |
 
 `node scripts/hosted-supabase.mjs plan` and `prepare CONFIG` are offline.
 `verify CONFIG` is a separate interactive opt-in command requiring explicit project

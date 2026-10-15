@@ -1,9 +1,19 @@
 # Owner-controlled hosted Supabase DEV (Issue #25)
 
-**Hosted verification has not been executed.** This guide prepares a new, isolated
-development project. It does not authorize Codex to access any hosted project.
-Only synthetic accounts and two fictional restaurants are permitted. The frontend
-remains browser-local; this is not a login, invitation or roster-sync feature.
+**Current evidence (Issue #29): owner-reported manual hosted DEV verification passed**
+with 4,944 HTTP requests, security/catalog audit, trusted persisted comparison and
+cleanup of all seven temporary Auth users and fictional application rows. Codex did
+not execute or independently verify these hosted actions. The owner reports email/
+password and email confirmation enabled, public signup/anonymous login disabled,
+GitHub deployment integration disconnected and automatic Data API exposure disabled.
+DEV currently has no test users or application data. Production and account lifecycle
+capabilities remain untested; this evidence does not establish browser login/refresh.
+
+This guide retains the original project preparation/seven-user authorization
+procedure for reference; do not rerun it for frontend acceptance. For Issue #29's
+optional login/logout UI and **one-user** owner-manual check, use [AUTH.md](AUTH.md).
+The frontend roster remains browser-local. No hosted access or changes by Codex are
+authorized by either guide.
 
 ## Approval boundaries
 
