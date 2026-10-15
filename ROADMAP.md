@@ -1,45 +1,38 @@
 # TipSplitter roadmap
 
-TipSplitter currently provides a browser-local tip allocation preview. The direction is a shared restaurant shift-management application that preserves true collected totals and actual historical payouts. [SPEC.md](SPEC.md) defines the current calculation contract; [docs/PRD.md](docs/PRD.md) records product direction and open business decisions. Future sequencing is provisional.
+TipSplitter currently offers a browser-local tip allocation preview and optional hosted DEV authentication. It has tenant-scoped roster schema and membership authorization, but the frontend does not yet read application tables. [SPEC.md](SPEC.md) defines the calculation contract; [docs/PRD.md](docs/PRD.md) records product direction and open business decisions. Future sequencing is provisional.
 
 ## Completed
 
 The following milestones are merged into `main`:
 
-| Milestone | Delivered | Merged PR |
+| Milestone | Delivered | Merged PR / evidence |
 | --- | --- | --- |
-| Calculation and verification foundation | Pure integer-cent/scaled-weight engine; floor-to-cent and floor-to-dollar payouts; signed reconciliation and explicit unassigned remainder; input/storage validation; 60 engine tests and test/lint/build CI. Retains the React dashboard and browser-local roster. | [#11](https://github.com/ciraheta3/tip-calculator/pull/11) |
-| Dependency security and development environment | Remediated dependency advisories at that milestone; Node 24 Dev Container aligned with CI; fixed Vite port 5173 and localhost forwarding; documented startup and draft-input reset behavior. | [#13](https://github.com/ciraheta3/tip-calculator/pull/13) |
-| Secure roster schema foundation | Implemented organization-scoped PostgreSQL roles and employees, exact default weights and same-tenant constraints; versioned transactional migrations, closed RLS/ACLs, disposable PostgreSQL checks, and [backend documentation](docs/BACKEND.md). No runtime database connection, authentication, or roster sync. | [#15](https://github.com/ciraheta3/tip-calculator/pull/15) |
-| React interface coverage | 15 frontend interface tests for inputs, allocation modes, validation, and roster persistence, with [test documentation](docs/UI-TESTS.md). Together with the 60 calculation tests, the automated suite totals 75 tests. | [#17](https://github.com/ciraheta3/tip-calculator/pull/17) |
+| Calculation and verification foundation | Pure integer-cent/scaled-weight engine; floor-to-cent and floor-to-dollar payouts; signed reconciliation and explicit unassigned remainder; input/storage validation; 60 engine tests and test/lint/build CI. Retains the browser-local calculator and roster. | [PR #11](https://github.com/ciraheta3/TipSplitter/pull/11) |
+| Dependency security and development environment | Remediated dependency advisories at that milestone; Node 24 Dev Container aligned with CI; fixed Vite port 5173 and localhost forwarding. | [PR #13](https://github.com/ciraheta3/TipSplitter/pull/13) |
+| Secure roster schema foundation | Organization-scoped PostgreSQL roles and employees, exact default weights, same-tenant constraints, forward-only migrations, closed RLS/ACLs and disposable PostgreSQL checks. No frontend table connection. | [PR #15](https://github.com/ciraheta3/TipSplitter/pull/15) |
+| React interface coverage | 15 calculator interface tests; together with 60 calculation tests, the original frontend suite totals 75. | [PR #17](https://github.com/ciraheta3/TipSplitter/pull/17) |
+| Membership authorization | Active restaurant memberships authorize admins and closers under tenant-scoped RLS. Client membership administration, organization writes and permanent roster deletes remain denied. | [PR #22](https://github.com/ciraheta3/TipSplitter/pull/22) |
+| Real local Supabase Auth/PostgREST integration | Pinned local CLI harness covers Auth-issued sessions, migration-ledger replays, and HTTP authorization against synthetic restaurants. The owner later reported a successful Mac run of 1,416 requests over two replays; this is owner-reported, separate from CI. | [PR #24](https://github.com/ciraheta3/TipSplitter/pull/24) |
+| Hosted DEV preparation and authorization verification | Owner-controlled setup and verification procedure; the owner reports a hosted pass with 4,944 HTTP requests, catalog/security audit, persisted comparison, and cleanup of seven temporary users and fictional rows. Codex did not access or independently verify hosted DEV. | [PR #26](https://github.com/ciraheta3/TipSplitter/pull/26); [Issue #29](https://github.com/ciraheta3/TipSplitter/issues/29) |
+| Optional DEV email/password authentication | Verified session-gated login/logout; account- and project-isolated browser-local calculator rosters; no application-table access or shared-roster synchronization. The frontend suite now has 122 tests (60 calculation, 15 calculator interface, 28 mocked Auth, and 19 configuration/request/storage-isolation tests). PR #30 reports owner-run browser login/logout acceptance separately from Codex CI results. | [PR #30](https://github.com/ciraheta3/TipSplitter/pull/30) |
 
-These milestones provide a browser-local calculation preview and a closed database foundation, not a shared service or finalized ledger.
+These milestones provide a browser-local calculator, optional DEV authentication, and database authorization foundations. They do not provide a shared frontend roster, financial ledger, or production-ready service.
 
-## In progress / proposed
+## In progress
 
-Membership authorization merged in PR #22, and the real local Supabase Auth/PostgREST
-workflow merged in PR #24 (owner-reported full Mac pass). Issue #25 prepares the
-first isolated hosted DEV environment with [manual owner setup](docs/HOSTED-DEV.md)
-and opt-in synthetic verification. Issue #29 records owner-reported hosted authorization verification (4,944 HTTP
-requests), security audit, persisted comparison and cleanup of all seven temporary
-users/fictional rows; Codex has not independently executed it. Issue #29 adds
-[frontend DEV login/logout](docs/AUTH.md) with isolated browser-local rosters. Real
-browser acceptance remains owner-manual. Synchronization, invitations and trusted
-account administration remain future work.
+- **Issue #31 — membership-aware organization context and read-only shared roster (DEV):** implementation is proceeding on a separate, unmerged branch. This capability is not in `main` and is not described here as completed.
 
 ## Planned
 
-No delivery dates are committed. Each milestone requires separate scope and review:
+No delivery dates are committed. Each milestone needs separate scope and review:
 
-1. **Hosted authorization and authentication:** complete owner-approved hosted DEV
-   verification before enabling shared data access. Membership-based RLS and local
-   Auth/PostgREST checks exist; frontend DEV Auth is implemented in Issue #29; trusted account administration
-   and production readiness remain unimplemented. See [docs/BACKEND.md](docs/BACKEND.md).
-2. **Shared roster:** connect the implemented employee/role schema to the frontend, with exact weight transport, weight inheritance/overrides, localStorage import, and synchronization after access and conflict rules are defined.
-3. **Shifts and immutable history:** model independent lunch/dinner participation, finalization, and immutable snapshots of collected totals and actual payouts; define corrections and audit history before implementation.
-4. **Adjustments and reconciliation:** support early departure and understaffing after interaction rules are agreed; preserve true collected totals and recorded payouts.
-5. **Reporting and export:** scope manager reports, exports, and any staff-facing baseline worksheets separately; distinguish simplified views from fiscal records.
-6. **Offline capabilities:** consider offline work and synchronization after shared-data conflict and reconciliation policies are established.
+1. **Trusted account lifecycle:** first-admin provisioning, invitations, account changes and revocation through reviewed trusted operations.
+2. **Shared roster:** read/write shared roster experience, exact numeric-text weight transport, import policy, and synchronization/conflict handling after access rules are reviewed.
+3. **Shifts and immutable history:** lunch/dinner participation, finalization, immutable collected-total and actual-payout snapshots, and correction/audit rules.
+4. **Adjustments and reconciliation:** early departure and understaffing after interaction rules are agreed; preserve true collected totals and recorded payouts.
+5. **Reporting and export:** scope manager reports, exports, and any staff-facing baseline worksheets separately from fiscal records.
+6. **Offline capabilities and launch hardening:** define synchronization/recovery, security operations, backups, and production readiness before launch.
 
 ## Open decisions
 
