@@ -59,8 +59,11 @@ Approved V1 access and remaining decisions before shared access:
 - Define roster retention, deletion, audit, backups, offline/simultaneous-edit behavior,
   localStorage import and development/staging/production ownership before synchronization.
 
-Membership/Auth/RLS work should precede shared roster sync. Existing leftovers,
-adjustments, finalization and historical-payout decisions above remain open.
+Membership/Auth/RLS groundwork is implemented, and Issue #31 is in progress to add
+membership-aware organization context and a read-only shared-roster view. It is not
+merged into main. Shared roster synchronization still requires decisions on access,
+retention, localStorage import and conflicts. Existing leftovers, adjustments,
+finalization and historical-payout decisions above remain open.
 
 ## Explicit PR 1 conventions to review
 
