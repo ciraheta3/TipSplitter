@@ -1,8 +1,12 @@
 # Membership-aware shared roster (Issue #31)
 
-PR #34 proposes this milestone and remains unmerged. The merged baseline through
-PR #33 includes optional DEV Auth and 122 tests, with no frontend application-table
-reads. On the PR #34 branch, the configured DEV frontend adds a separate
+PR #34 is merged, including the filesystem portability fix, with 153 frontend
+tests. The owner reports authorized roster read, unrelated nonmember denial,
+revocation with an existing session, four-table HTTP GET-only inspection and cleanup
+of two synthetic users/fixture passed. Codex did not independently execute hosted
+checks. Extended owner-only cases remain Issue #36. Issue #35 proposes separate
+[offline DEV provisioning](DEV-PROVISIONING.md); it authorizes no hosted operation.
+The configured DEV frontend includes a separate
 **Shared roster · DEV · Read only** section below verified Auth. The calculator
 still uses only its project/account browser-local roster; neither roster is
 synchronized or imported into the other.
@@ -68,7 +72,9 @@ adjustments and exports are outside this milestone. See [PRD.md](PRD.md).
 
 ## Owner-driven DEV acceptance worksheet
 
-**Pending; not executed by Codex.** No safely authorized hosted fixture is assumed.
+**Historical worksheet; not executed by Codex.** Basic owner-reported checks are
+listed above; remaining cases require separate approval under Issue #36. No safely
+authorized hosted fixture is assumed.
 This worksheet grants no permission to connect, create accounts, provision a first
 admin/membership, modify settings or clean up data. The owner must separately approve
 the exact DEV identity and every hosted action, using an independently reviewed,
@@ -101,7 +107,10 @@ constraints to complete a worksheet row. Report a grant/API mismatch for owner
 review. Cleanup must target only approved synthetic records; verify active **and
 inactive** memberships before any separately approved Auth deletion.
 
-## Validation
+## Historical PR #34 validation
+
+The branch/reconciliation statements below describe evidence recorded before merge;
+current merged status and owner-reported acceptance are recorded above.
 
 Local Node 24.19.0 / npm 11.9.0, starting from merged `main`
 `e62591c696a705b4fef1f3d837afcd93371796a6`:
@@ -149,8 +158,8 @@ Validation rerun after reconciliation (Node 24.19.0 / npm 11.9.0):
   CLI limitation above remains historical; `check:supabase` was not rerun for this
   documentation reconciliation. No hosted access or owner acceptance was performed.
 
-PR #34 remains open for independent review and separately approved owner-run DEV
-acceptance. GitHub Actions and mergeability results are recorded in the PR.
+At that historical checkpoint PR #34 remained open for review. It has since merged;
+GitHub Actions results and review history remain recorded in the PR.
 
 
 ## Filesystem portability fix

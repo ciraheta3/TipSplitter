@@ -2,7 +2,7 @@
 
 TipSplitter helps restaurant managers preview how a pooled cash and credit tip total is split among employees using share weights. The current application is a browser-local calculator with optional hosted DEV email/password authentication; the product direction is a shared shift-management application with auditable payout history.
 
-## Merged features (through PR #33)
+## Merged features (through PR #34)
 
 - Cash and credit entry combined into one tip pool, with blank inputs treated as zero.
 - Employee roster with names, job titles, share weights, and add/remove controls, saved in this browser's localStorage.
@@ -10,21 +10,22 @@ TipSplitter helps restaurant managers preview how a pooled cash and credit tip t
 - Total collected, allocated payouts, and an explicitly unassigned remainder. Residual money is never automatically redistributed.
 - Visible validation for invalid amounts, weights, and saved roster data; storage failures allow session-only roster edits.
 - Optional hosted DEV sign-in/sign-out, verified session restoration and per-account browser-local roster isolation. No shared roster synchronization.
+- Separate membership-aware read-only shared roster with restaurant selection; no shared weights or editing.
 - Responsive dashboard. Zero individual weights are allowed; an empty or all-zero roster leaves the entire pool unassigned.
 
 For a $100.00 pool with weights 100:50, cent mode previews $66.66 and $33.33 with $0.01 unassigned. Whole-dollar mode previews $66 and $33 with $1.00 unassigned. These are allocation previews, not records of actual payments.
 
-## Proposed in PR #34 (Issue #31)
+## Proposed offline DEV tooling (Issue #35)
 
-The unmerged PR adds a membership-aware **Shared roster · DEV · Read only** view with a restaurant selector, separate from the calculator. Shared weights and editing are deferred. This branch implements the proposal; independent review and owner-run DEV acceptance remain pending. See [design, validation and owner acceptance](docs/SHARED-ROSTER.md).
+The [owner provisioning playbook](docs/DEV-PROVISIONING.md) describes a private, offline plan/SQL generator for one fictional DEV restaurant and explicitly approved existing synthetic accounts. Nothing connects or executes SQL. Separate owner gates apply to every operation and cleanup. PR #34 is merged; its owner-reported read-only acceptance and remaining Issue #36 cases are recorded in [SHARED-ROSTER.md](docs/SHARED-ROSTER.md).
 
 ## Architecture and stack
 
 The client uses React 19, TypeScript 6, Vite 8, and Tailwind CSS 4. [src/App.tsx](src/App.tsx) selects local preview or the DEV Auth gate; [src/Calculator.tsx](src/Calculator.tsx) handles the unchanged calculator inputs and browser-local roster. See [frontend Auth setup and acceptance](docs/AUTH.md). The pure TypeScript engine in [src/calculation.ts](src/calculation.ts) parses money into integer cents, scales weights to integer hundredths, and uses BigInt intermediates for exact proportional arithmetic and signed reconciliation.
 
-The merged baseline through PR #33 runs 122 automated frontend tests: 60 calculation tests, 15 calculator interface tests, 28 mocked Auth tests, and 19 configuration/request/storage-isolation tests. PR #34 preserves those assertions and adds 31 shared-roster tests, for 153 on this branch. ESLint and TypeScript also check the source. GitHub Actions runs frontend tests, lint, and the production build on pull requests and pushes to `main`.
+The merged PR #34 baseline runs 153 frontend tests, including the original 122 Auth/calculator/configuration tests and 31 shared-roster tests. Issue #35 also runs offline provisioning tests through `npm test`. ESLint and TypeScript also check the source. GitHub Actions runs frontend tests, lint, and the production build on pull requests and pushes to `main`.
 
-Versioned PostgreSQL migrations define organization-scoped roles, employees, and memberships, with exact weights, same-tenant constraints, and deny-by-default RLS and table privileges. Active admins and closers are authorized within their restaurant. A separate local Supabase harness verifies real Auth/PostgREST authorization. The merged baseline through PR #33 has optional DEV Auth and no frontend application-table connection. PR #34 proposes the first membership-aware, read-only frontend roster using the existing SELECT grants and RLS; the calculator remains browser-local. See [backend design and verification](docs/BACKEND.md). A separate CI job checks the database schema.
+Versioned PostgreSQL migrations define organization-scoped roles, employees, and memberships, with exact weights, same-tenant constraints, and deny-by-default RLS and table privileges. Active admins and closers are authorized within their restaurant. A separate local Supabase harness verifies real Auth/PostgREST authorization. Merged PR #34 adds the membership-aware, read-only frontend roster using the existing SELECT grants and RLS; the calculator remains browser-local. See [backend design and verification](docs/BACKEND.md). A separate CI job checks the database schema.
 
 ## Development
 
@@ -69,7 +70,7 @@ Vite binds to `0.0.0.0` inside the container through `VITE_DEV_HOST`; outside it
 - No lunch/dinner shift records, finalization, immutable history, or actual payout ledger exist. Preview allocations must not be treated as historical payments.
 - Adjustments, automatic leftover allocation, reports, exports, and offline synchronization are not implemented. Money and weights accept nonnegative plain decimals with at most two fractional digits; invalid or unsafe values are rejected rather than rounded.
 
-Tenant-scoped schema authorization and optional DEV sign-in are implemented. Membership-aware organization context and a read-only shared roster are proposed in the unmerged PR #34 for Issue #31; shared roster editing/synchronization, trusted account administration and invitations, separate shifts, immutable payout history, adjustments and reconciliation, reporting/export, offline sync, and launch hardening remain future work. Sequencing and business rules remain provisional. [ROADMAP.md](ROADMAP.md) records merged milestones and later work.
+Tenant-scoped schema authorization and optional DEV sign-in are implemented. Membership-aware organization context and a read-only shared roster are merged in PR #34; Issue #35 proposes only offline synthetic DEV provisioning; shared roster editing/synchronization, trusted account administration and invitations, separate shifts, immutable payout history, adjustments and reconciliation, reporting/export, offline sync, and launch hardening remain future work. Sequencing and business rules remain provisional. [ROADMAP.md](ROADMAP.md) records merged milestones and later work.
 
 ## Project documentation
 
@@ -77,6 +78,7 @@ Tenant-scoped schema authorization and optional DEV sign-in are implemented. Mem
 - [Product requirements](docs/PRD.md): product direction and unresolved business decisions.
 - [Calculation specification](SPEC.md): current allocation and persistence contract.
 - [Backend foundation](docs/BACKEND.md): schema, access boundaries, migration checks, and future integration requirements.
+- [Offline DEV provisioning](docs/DEV-PROVISIONING.md): private plans, SQL guards, owner worksheet and separate cleanup.
 - [DEV authentication](docs/AUTH.md): frontend configuration, architecture, manual login/logout checklist and cleanup.
 - [Interface tests](docs/UI-TESTS.md): test commands, coverage, limitations, and browser smoke checks.
 - [Contribution guidance](AGENTS.md): repository engineering and verification requirements.

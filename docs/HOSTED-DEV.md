@@ -15,10 +15,13 @@ establish refresh/expiry, production or account-lifecycle readiness.
 This guide retains the original project preparation/seven-user authorization
 procedure for reference; do not rerun it for frontend acceptance. Use [AUTH.md](AUTH.md)
 for the optional login/logout UI checklist and its reported status. The calculator
-roster remains browser-local. PR #34 (Issue #31) proposes a separate read-only shared
+roster remains browser-local. Merged PR #34 (Issue #31) adds a separate read-only shared
 view; use its [owner acceptance worksheet](SHARED-ROSTER.md#owner-driven-dev-acceptance-worksheet)
-for membership/no-membership checks. This PR remains unmerged, and shared-roster DEV
-acceptance is pending. Positive hosted fixtures and all provisioning, revocation and
+for membership/no-membership checks. The owner reports basic read/nonmember denial,
+existing-session revocation, four-table GET-only inspection and two-user/fixture
+cleanup passed. Extended owner-only cases remain Issue #36. Issue #35 proposes the
+separate [offline provisioning playbook](DEV-PROVISIONING.md); the historical seven-user
+procedure below is not its prerequisite. Positive hosted fixtures and all provisioning, revocation and
 cleanup require separate owner approval and a reviewed procedure. No hosted access
 or changes by Codex are authorized by these guides.
 
