@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run && npm run check:dev-provision",
+    "test": "npm run check:dev-provision && vitest run",
     "check": "npm test && npm run lint && npm run build",
     "check:db": "bash scripts/check-db.sh && npm run check:dev-provision-db",
     "supabase:local": "node scripts/supabase-local.mjs",
