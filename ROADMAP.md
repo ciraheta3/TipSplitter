@@ -1,6 +1,6 @@
 # TipSplitter roadmap
 
-TipSplitter currently offers a browser-local tip allocation preview and optional hosted DEV authentication. It has tenant-scoped roster schema and membership authorization, but the frontend does not yet read application tables. [SPEC.md](SPEC.md) defines the calculation contract; [docs/PRD.md](docs/PRD.md) records product direction and open business decisions. Future sequencing is provisional.
+The merged baseline through PR #33 offers a browser-local tip allocation preview, optional hosted DEV authentication, tenant-scoped roster schema and membership authorization. It has no frontend application-table reads. The unmerged PR #34 proposes the first read-only shared roster; its branch implementation and pending acceptance are described below. [SPEC.md](SPEC.md) defines the calculation contract; [docs/PRD.md](docs/PRD.md) records product direction and open business decisions. Future sequencing is provisional.
 
 ## Completed
 
@@ -15,20 +15,20 @@ The following milestones are merged into `main`:
 | Membership authorization | Active restaurant memberships authorize admins and closers under tenant-scoped RLS. Client membership administration, organization writes and permanent roster deletes remain denied. | [PR #22](https://github.com/ciraheta3/TipSplitter/pull/22) |
 | Real local Supabase Auth/PostgREST integration | Pinned local CLI harness covers Auth-issued sessions, migration-ledger replays, and HTTP authorization against synthetic restaurants. The owner later reported a successful Mac run of 1,416 requests over two replays; this is owner-reported, separate from CI. | [PR #24](https://github.com/ciraheta3/TipSplitter/pull/24) |
 | Hosted DEV preparation and authorization verification | Owner-controlled setup and verification procedure; the owner reports a hosted pass with 4,944 HTTP requests, catalog/security audit, persisted comparison, and cleanup of seven temporary users and fictional rows. Codex did not access or independently verify hosted DEV. | [PR #26](https://github.com/ciraheta3/TipSplitter/pull/26); [Issue #29](https://github.com/ciraheta3/TipSplitter/issues/29) |
-| Optional DEV email/password authentication | Verified session-gated login/logout; account- and project-isolated browser-local calculator rosters; no application-table access or shared-roster synchronization. The frontend suite now has 122 tests (60 calculation, 15 calculator interface, 28 mocked Auth, and 19 configuration/request/storage-isolation tests). PR #30 reports owner-run browser login/logout acceptance separately from Codex CI results. | [PR #30](https://github.com/ciraheta3/TipSplitter/pull/30) |
+| Optional DEV email/password authentication | Verified session-gated login/logout; account- and project-isolated browser-local calculator rosters; no application-table access or shared-roster synchronization. The frontend suite at that milestone has 122 tests (60 calculation, 15 calculator interface, 28 mocked Auth, and 19 configuration/request/storage-isolation tests). PR #30 reports owner-run browser login/logout acceptance separately from Codex CI results. | [PR #30](https://github.com/ciraheta3/TipSplitter/pull/30) |
 
 These milestones provide a browser-local calculator, optional DEV authentication, and database authorization foundations. They do not provide a shared frontend roster, financial ledger, or production-ready service.
 
 ## In progress
 
-- **Issue #31 — membership-aware organization context and read-only shared roster (DEV):** implementation is proceeding on a separate, unmerged branch. This capability is not in `main` and is not described here as completed.
+- **Issue #31 / PR #34 — membership-aware organization context and read-only shared roster (DEV):** this branch implements the bounded [shared roster read path](docs/SHARED-ROSTER.md) for independent review. PR #34 remains unmerged; owner-run shared-roster DEV acceptance is pending. It preserves the 122-test merged baseline and adds 31 shared-roster tests (153 total). Weights, editing, import/synchronization and hosted fixture provisioning require separate reviews. The browser-local calculator remains independent.
 
 ## Planned
 
 No delivery dates are committed. Each milestone needs separate scope and review:
 
 1. **Trusted account lifecycle:** first-admin provisioning, invitations, account changes and revocation through reviewed trusted operations.
-2. **Shared roster:** read/write shared roster experience, exact numeric-text weight transport, import policy, and synchronization/conflict handling after access rules are reviewed.
+2. **Shared roster editing:** after review of the proposed read-only milestone, add shared writes, exact numeric-text weight transport, import policy, and synchronization/conflict handling under separately reviewed rules.
 3. **Shifts and immutable history:** lunch/dinner participation, finalization, immutable collected-total and actual-payout snapshots, and correction/audit rules.
 4. **Adjustments and reconciliation:** early departure and understaffing after interaction rules are agreed; preserve true collected totals and recorded payouts.
 5. **Reporting and export:** scope manager reports, exports, and any staff-facing baseline worksheets separately from fiscal records.

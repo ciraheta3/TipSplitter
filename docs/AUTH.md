@@ -2,9 +2,11 @@
 
 TipSplitter supports email/password sign-in and sign-out using the maintained
 `@supabase/supabase-js` SDK. This is a browser-local calculation preview with a
-DEV login gate. It does not read or write application tables, synchronize rosters,
-provision memberships, or deploy anything. Authentication alone grants no restaurant
-membership. Database RLS, not the browser gate, authorizes future tenant access.
+DEV login gate, merged in PR #30. PR #34 (Issue #31) proposes a separate
+[membership-aware read-only roster](SHARED-ROSTER.md) using existing application
+tables; it is implemented on this branch and remains unmerged. It does not
+synchronize rosters, provision memberships or deploy anything. Authentication alone grants no restaurant
+membership. Database RLS, not the browser gate, authorizes tenant access.
 
 ## Set up your local browser frontend
 
@@ -49,6 +51,10 @@ seven-user fixture for this login check.
 
 ## Owner-only manual acceptance with one temporary fictional user
 
+PR #30 records owner-reported login/logout acceptance, with the evidence limits
+recorded below. Step 6 describes the proposed PR #34 no-membership behavior;
+shared-roster DEV acceptance remains pending and requires separate owner approval.
+
 Keep private notes of the exact reviewed commit, DEV project, test account UUID,
 checks and cleanup. Use no real employee/restaurant data. These steps deliberately
 create **one** account with **no** memberships or application rows.
@@ -85,12 +91,12 @@ create **one** account with **no** memberships or application rows.
    with the same temporary account, its roster is empty because browser storage
    is separate. This proves no cloud synchronization, not cross-account isolation;
    automated mocked tests exercise two distinct account UUIDs on one device.
-6. As this user has no restaurant membership, it receives only its local preview.
-   No organizations, tenant employees, role/admin controls, invitations or shared
-   roster should appear. In Network, verify that the app makes Auth requests only,
-   with **no `/rest/v1` application-table calls**. There is no table-access UI to
-   bypass. Membership/RLS authorization is covered by the separately owner-reported
-   hosted suite, not newly tested by this frontend checklist.
+6. As this user has no restaurant membership, expect **No restaurant access assigned**
+   and the local preview, with no shared employees or privileged controls. Issue #31
+   now makes an own-active-membership GET after verified Auth; it must not query
+   roles/employees for a nonmember. Use the [shared roster worksheet](SHARED-ROSTER.md)
+   for additional separately approved membership scenarios. Mocked UI tests do not
+   establish hosted RLS authorization.
 7. While online, click **Sign out**. The dashboard and its drafts must disappear
    immediately; login returns. Reload and use browser Back/Forward: authenticated
    content must stay hidden until another successful sign-in. A second normal tab
@@ -142,10 +148,12 @@ create **one** account with **no** memberships or application rows.
 - Namespacing prevents accidental UI disclosure across accounts. It is not encryption
   or protection from someone with DevTools, a shared browser profile, injected code
   or direct filesystem access. Use fictional DEV data and separate browser profiles.
-- No public signup, reset, recovery, invite, self-provisioning, MFA, OAuth, organization
-  selector, membership writes, application-table client, new migration or deployment
-  is implemented. The owner reports completing DEV browser login/logout acceptance
-  (PR #30); item-by-item outcomes and temporary-account cleanup were not independently
+- No public signup, reset, recovery, invite, self-provisioning, MFA, OAuth,
+  membership writes, new migration or deployment is implemented. The merged Auth
+  milestone has no organization selector or application-table client; PR #34
+  proposes only a selector and read-only application-table access behind this gate.
+  The owner reports completing DEV browser login/logout acceptance (PR #30);
+  item-by-item outcomes and temporary-account cleanup were not independently
   documented there. Codex did not perform browser acceptance. Production readiness,
   email delivery/lifecycle and real browser refresh/expiry remain unverified. Existing
   local full-stack harness and calculation engine stay unchanged.
@@ -158,7 +166,10 @@ Official guidance reviewed for this implementation:
 [sign-out scopes](https://supabase.com/docs/reference/javascript/auth-signout), and
 [API keys](https://supabase.com/docs/guides/api/api-keys).
 
-## Validation of this change
+## Validation of the merged Auth milestone (PR #30)
+
+The following historical evidence is preserved from PR #30. For PR #34 validation
+and pending shared-roster acceptance, see [SHARED-ROSTER.md](SHARED-ROSTER.md).
 
 Codex Cloud, Node 24.19.0 / npm 11.9.0:
 

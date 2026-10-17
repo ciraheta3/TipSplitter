@@ -6,16 +6,21 @@ cleanup of all seven temporary Auth users and fictional application rows. Codex 
 not execute or independently verify these hosted actions. The owner reports email/
 password and email confirmation enabled, public signup/anonymous login disabled,
 GitHub deployment integration disconnected and automatic Data API exposure disabled.
-DEV currently has no test users or application data. PR #30 separately records
-owner-reported DEV browser login/logout acceptance; individual outcomes and
+After the seven-user cleanup, the owner reported no test users or application
+data. PR #30 separately records owner-reported DEV browser login/logout acceptance;
+individual outcomes and
 synthetic-account cleanup were not independently documented there. This does not
 establish refresh/expiry, production or account-lifecycle readiness.
 
 This guide retains the original project preparation/seven-user authorization
 procedure for reference; do not rerun it for frontend acceptance. Use [AUTH.md](AUTH.md)
-for the optional login/logout UI checklist and its reported status. The frontend
-roster remains browser-local. No hosted access or changes by Codex are authorized
-by either guide.
+for the optional login/logout UI checklist and its reported status. The calculator
+roster remains browser-local. PR #34 (Issue #31) proposes a separate read-only shared
+view; use its [owner acceptance worksheet](SHARED-ROSTER.md#owner-driven-dev-acceptance-worksheet)
+for membership/no-membership checks. This PR remains unmerged, and shared-roster DEV
+acceptance is pending. Positive hosted fixtures and all provisioning, revocation and
+cleanup require separate owner approval and a reviewed procedure. No hosted access
+or changes by Codex are authorized by these guides.
 
 ## Approval boundaries
 
