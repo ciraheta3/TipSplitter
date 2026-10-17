@@ -8,12 +8,14 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "vitest run && npm run check:dev-provision",
     "check": "npm test && npm run lint && npm run build",
-    "check:db": "bash scripts/check-db.sh",
+    "check:db": "bash scripts/check-db.sh && npm run check:dev-provision-db",
     "supabase:local": "node scripts/supabase-local.mjs",
     "check:supabase": "node scripts/check-supabase.mjs",
-    "check:hosted-preflight": "node --test --test-isolation=none scripts/hosted-supabase-tests.mjs"
+    "check:hosted-preflight": "node --test --test-isolation=none scripts/hosted-supabase-tests.mjs",
+    "check:dev-provision": "node --test --test-isolation=none scripts/dev-roster-provision-tests.mjs",
+    "check:dev-provision-db": "node scripts/check-dev-provision-db.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",

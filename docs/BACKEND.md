@@ -6,11 +6,8 @@ future shared application. The migrations use Supabase API role names and refere
 its managed Auth identities.
 The migrations create no hosted project or frontend application-table connection.
 The app now has optional DEV Auth; calculator rosters remain browser-local. The
-optional local integration harness exercises actual Auth and REST APIs. The merged
-baseline through PR #33 has no frontend application-table reads.
-
-PR #34 (Issue #31), implemented on this branch but still unmerged, proposes a
-separate [read-only frontend roster](SHARED-ROSTER.md) using the existing four
+optional local integration harness exercises actual Auth and REST APIs. Merged
+PR #34 (Issue #31) adds a separate [read-only frontend roster](SHARED-ROSTER.md) using the existing four
 tables, SELECT grants and RLS. It neither changes this security model
 nor supplies provisioning or exact numeric transport. The calculator stays local.
 
@@ -131,6 +128,8 @@ Supabase harness verifies actual Auth-issued sessions and PostgREST requests.
 
 ### Trusted provisioning and lifecycle
 
+Issue #35 proposes [offline owner-controlled synthetic DEV plans and guarded SQL](DEV-PROVISIONING.md), not a production lifecycle service or permission to execute hosted operations.
+
 This migration seeds no organizations, identities or memberships. Before eventual
 shared access, a secured manual/server administrative operation must verify a
 Supabase Auth account's actual UUID, create the intended restaurant through a
@@ -152,10 +151,10 @@ to close access during an incident, first revoke authenticated roster grants
 (including column grants) and helper execution through a trusted operation. Dropping membership records/tables
 as a rollback would lose authorization metadata and must not be automated.
 
-Owner-reported hosted Auth/API validation is recorded below. PR #34 proposes
-membership-aware organization context and a read-only shared roster; the merged
-baseline through PR #33 makes no frontend application-table requests. This branch
-implements the proposal, with shared-roster DEV acceptance still pending. Trusted
+Owner-reported hosted Auth/API validation is recorded below. PR #34 is merged with
+membership-aware organization context and a read-only shared roster. The owner
+reports basic read/nonmember/revocation/GET-only checks and two-user fixture cleanup
+passed; extended acceptance remains Issue #36, not performed by Codex. Trusted
 account administration, invitations, shared roster editing/synchronization with exact
 numeric transport and explicit localStorage import remain future work. Shift
 participation, finalization/reopening and historical snapshots remain separate work.
@@ -181,8 +180,9 @@ npm run check       # All frontend tests, lint, TypeScript/build; no SQL verific
 npm run check:db    # Two disposable PostgreSQL migration/security replays
 ```
 
-The merged Auth baseline has 122 frontend tests; PR #34 adds 31 read-only roster
-tests (153 total on this branch). `check:db` retains its existing separate CI job.
+The merged PR #34 baseline has 153 frontend tests. Issue #35 adds offline generator
+tests to `npm test`; `check:db` retains both unchanged clean security replays and then
+runs a separate disposable generated-SQL suite. The existing separate CI job is retained.
 It uses `postgres:17-bookworm`,
 no network, no published ports, a tmpfs database and cleanup on exit. It applies
 all ordered migrations on two clean databases with `psql -X --set=ON_ERROR_STOP=1`.

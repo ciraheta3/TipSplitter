@@ -2,10 +2,10 @@
 
 TipSplitter supports email/password sign-in and sign-out using the maintained
 `@supabase/supabase-js` SDK. This is a browser-local calculation preview with a
-DEV login gate, merged in PR #30. PR #34 (Issue #31) proposes a separate
+DEV login gate, merged in PR #30. Merged PR #34 (Issue #31) adds a separate
 [membership-aware read-only roster](SHARED-ROSTER.md) using existing application
-tables; it is implemented on this branch and remains unmerged. It does not
-synchronize rosters, provision memberships or deploy anything. Authentication alone grants no restaurant
+tables. The browser does not synchronize rosters, provision memberships or deploy
+anything. Issue #35 proposes only [offline DEV provisioning](DEV-PROVISIONING.md). Authentication alone grants no restaurant
 membership. Database RLS, not the browser gate, authorizes tenant access.
 
 ## Set up your local browser frontend
@@ -52,8 +52,9 @@ seven-user fixture for this login check.
 ## Owner-only manual acceptance with one temporary fictional user
 
 PR #30 records owner-reported login/logout acceptance, with the evidence limits
-recorded below. Step 6 describes the proposed PR #34 no-membership behavior;
-shared-roster DEV acceptance remains pending and requires separate owner approval.
+recorded below. Step 6 describes the merged PR #34 no-membership behavior. The
+owner reports basic shared-roster DEV checks/cleanup passed; extended checks remain
+Issue #36 and require separate approval. This historical worksheet grants no new approval.
 
 Keep private notes of the exact reviewed commit, DEV project, test account UUID,
 checks and cleanup. Use no real employee/restaurant data. These steps deliberately
@@ -151,7 +152,7 @@ create **one** account with **no** memberships or application rows.
 - No public signup, reset, recovery, invite, self-provisioning, MFA, OAuth,
   membership writes, new migration or deployment is implemented. The merged Auth
   milestone has no organization selector or application-table client; PR #34
-  proposes only a selector and read-only application-table access behind this gate.
+  adds only a selector and read-only application-table access behind this gate.
   The owner reports completing DEV browser login/logout acceptance (PR #30);
   item-by-item outcomes and temporary-account cleanup were not independently
   documented there. Codex did not perform browser acceptance. Production readiness,
