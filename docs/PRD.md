@@ -37,9 +37,8 @@ PostgreSQL/Supabase is the intended shared backend. [BACKEND.md](BACKEND.md) doc
 the tenant-scoped organizations, configurable job roles, employee defaults, exact
 weight constraints, migration checks and authorization plan. The original migration
 closed application access; Issue #21 adds verified
-per-restaurant memberships and roster policies. The unmerged PR #34 (Issue #31)
-proposes a separate [membership-aware read-only roster](SHARED-ROSTER.md), implemented
-on this branch; the browser-local roster and calculation behavior remain unchanged.
+per-restaurant memberships and roster policies. Merged PR #34 (Issue #31)
+adds a separate [membership-aware read-only roster](SHARED-ROSTER.md); the browser-local roster and calculation behavior remain unchanged.
 
 Roster conventions in this foundation: one organization represents one restaurant;
 an employee's required default role belongs to that organization; `NULL` default
@@ -60,10 +59,12 @@ Approved V1 access and remaining decisions before shared access:
 - Define roster retention, deletion, audit, backups, offline/simultaneous-edit behavior,
   localStorage import and development/staging/production ownership before synchronization.
 
-Membership/Auth/RLS groundwork is merged, as documented by PR #33. PR #34
-(Issue #31) proposes membership-aware organization context and a read-only
-shared-roster view. It remains unmerged, with independent review and owner-run
-shared-roster DEV acceptance pending. Shared roster synchronization still requires
+Membership/Auth/RLS groundwork and PR #34
+(Issue #31) membership-aware organization context/read-only shared roster are merged.
+The owner reports basic read/nonmember/revocation/GET-only checks and two-user fixture
+cleanup passed; extended cases remain Issue #36. Issue #35 proposes only
+[offline synthetic DEV provisioning](DEV-PROVISIONING.md), not production account
+administration, invitations or shared roster editing. Shared roster synchronization still requires
 decisions on access, retention, localStorage import and conflicts. Existing leftovers, adjustments,
 finalization and historical-payout decisions above remain open.
 
@@ -82,6 +83,6 @@ Optional hosted DEV email/password authentication gates the existing local previ
 have separate browser-local roster storage per project/account; legacy data is not
 automatically imported. Sign-in does not grant restaurant membership. No shared
 roster/table access, provisioning, lifecycle administration or financial-policy
-changes are included in that merged milestone. The proposed PR #34 adds only
+changes are included in that merged milestone. Merged PR #34 adds only
 shared reads, with no provisioning or calculator integration. Import, retention,
 recovery and synchronization decisions remain open.
