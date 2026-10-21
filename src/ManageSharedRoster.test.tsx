@@ -25,8 +25,9 @@ function response(rows: unknown[], status = 200, count = rows.length) {
 }
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>(yes => { resolve = yes; });
-  return { promise, resolve };
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
 }
 function query(table: Table, url: URL, init: RequestInit) {
   const matches = (row: Row) => [...url.searchParams].every(([key, value]) => !value.startsWith('eq.') || String(row[key]) === value.slice(3));
@@ -84,6 +85,21 @@ async function addRole(name = '  Fictional custom  ', weight = '90071992547409.9
   await userEvent.type(screen.getByLabelText('Shared role name'), name);
   await userEvent.type(screen.getByLabelText('Default share weight'), weight);
   await userEvent.click(screen.getByRole('button', { name: 'Save shared roster' }));
+}
+async function submitEmployee(name = 'Fictional delayed employee') {
+  await userEvent.click(screen.getByRole('button', { name: 'Add shared employee' }));
+  fireEvent.change(screen.getByLabelText('Shared employee name'), { target: { value: name } });
+  fireEvent.change(screen.getByLabelText('Default shared job role'), { target: { value: id(4) } });
+  fireEvent.submit(screen.getByRole('form', { name: 'Add shared employee' }));
+  await waitFor(() => expect(mutations()).toHaveLength(1));
+}
+async function inspectAndAcknowledge(expected = 'Fictional delayed employee · Active') {
+  await userEvent.click(screen.getByRole('button', { name: 'Inspect current roster' }));
+  expect(await screen.findByText(expected)).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeDisabled();
+  await userEvent.click(await screen.findByRole('button', { name: 'I inspected the roster; allow new edits' }));
+  expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeEnabled();
+  expect(screen.queryByRole('form')).not.toBeInTheDocument();
 }
 
 it.each(['admin', 'closer'])('allows active %s exact-string inserts, rechecks access and reloads server state', async role => {
@@ -364,4 +380,188 @@ it('keeps local/account calculator storage and payouts isolated from shared writ
   expect(localStorage.getItem('fictional-account')).toBe(own);
   expect(localStorage.getItem('employees')).toBe('unrelated legacy');
   expect(write).not.toHaveBeenCalled();
+});
+
+it.each(['reload', 'auth-refresh', 'unmount', 'parent-focus'])('retains uncertainty across %s when the insert commits after the next read', async kind => {
+  const pending = deferred<Response>();
+  intercept = (_table, _url, init) => init.method === 'POST' ? pending.promise : undefined;
+  const view = render(kind === 'parent-focus' ? <SharedRoster client={client} userId={userId} /> : manager());
+  if (kind === 'parent-focus') await userEvent.click(await screen.findByRole('button', { name: 'Manage shared roster · DEV' }));
+  await loaded(); await submitEmployee();
+  const request = mutations()[0];
+  if (kind === 'reload') fireEvent.click(screen.getByRole('button', { name: 'Reload management / discard draft' }));
+  if (kind === 'auth-refresh') act(() => emit());
+  if (kind === 'unmount') { view.unmount(); render(manager()); }
+  if (kind === 'parent-focus') {
+    fireEvent(window, new Event('focus'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Manage shared roster · DEV' }));
+  }
+  await loaded();
+  expect(request.init.signal?.aborted).toBe(true);
+  expect(requests.filter(r => r.table === 'employees' && r.init.method === 'GET').length).toBeGreaterThanOrEqual(2);
+  expect(screen.queryByText('Fictional delayed employee · Active')).not.toBeInTheDocument();
+  expect(screen.getByRole('alert')).toHaveTextContent('may have committed');
+  expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Inspect current roster' })).toBeDisabled();
+  // The server accepts the original insert despite the browser's aborted fetch.
+  await act(async () => pending.resolve(query(request.table, request.url, request.init)));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Inspect current roster' })).toBeEnabled());
+  expect(tables.employees.filter(row => row.name === 'Fictional delayed employee')).toHaveLength(1);
+  expect(screen.queryByText('Fictional delayed employee · Active')).not.toBeInTheDocument();
+  expect(screen.queryByText('Save confirmed. Shared roster refreshed.')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'I inspected the roster; allow new edits' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeDisabled();
+  await inspectAndAcknowledge();
+  expect(screen.getByText('Inspection acknowledged. No write was retried.')).toBeVisible();
+  expect(mutations()).toHaveLength(1);
+});
+
+it('keeps additions blocked when one-minute expiry interrupts an insert', async () => {
+  vi.useFakeTimers();
+  const pending = deferred<Response>();
+  intercept = (_table, _url, init) => init.method === 'POST' ? pending.promise : undefined;
+  render(manager());
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+  fireEvent.click(screen.getByRole('button', { name: 'Add shared employee' }));
+  fireEvent.change(screen.getByLabelText('Shared employee name'), { target: { value: 'Fictional expiring insert' } });
+  fireEvent.change(screen.getByLabelText('Default shared job role'), { target: { value: id(4) } });
+  fireEvent.submit(screen.getByRole('form', { name: 'Add shared employee' }));
+  await act(async () => {});
+  expect(mutations()).toHaveLength(1);
+  const request = mutations()[0];
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  expect(request.init.signal?.aborted).toBe(true);
+  expect(screen.getByRole('alert')).toHaveTextContent('may have committed');
+  expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeDisabled();
+  await act(async () => pending.resolve(query(request.table, request.url, request.init)));
+  expect(screen.getByRole('button', { name: 'Inspect current roster' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeDisabled();
+  expect(screen.queryByText('Save confirmed. Shared roster refreshed.')).not.toBeInTheDocument();
+  expect(mutations()).toHaveLength(1);
+});
+
+it('retains uncertainty when fetch rejects on abort but the database commits later', async () => {
+  const pending = deferred<Response>();
+  intercept = (_table, _url, init) => {
+    if (init.method !== 'POST') return;
+    init.signal?.addEventListener('abort', () => pending.reject(new DOMException('Aborted', 'AbortError')), { once: true });
+    return pending.promise;
+  };
+  render(manager()); await loaded(); await submitEmployee();
+  const request = mutations()[0];
+  fireEvent.click(screen.getByRole('button', { name: 'Reload management / discard draft' }));
+  await loaded();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Inspect current roster' })).toBeEnabled());
+  expect(screen.queryByText('Fictional delayed employee · Active')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeDisabled();
+  expect(screen.getByRole('alert')).toHaveTextContent('A slow write may appear later');
+  query(request.table, request.url, request.init); // independent, late DB commit
+  await inspectAndAcknowledge();
+  expect(mutations()).toHaveLength(1);
+});
+
+it('distinguishes a confirmed write from its failed refresh and requires inspection, not resubmission', async () => {
+  let committed = false;
+  let refreshFails = true;
+  intercept = (table, url, init) => {
+    if (init.method === 'POST') { const result = query(table, url, init); committed = true; return result; }
+    if (committed && refreshFails && table === 'job_roles') return new Response(JSON.stringify({ code: 'XX000', message: 'private server detail' }), { status: 500 });
+  };
+  render(manager()); await loaded(); await submitEmployee();
+  expect(await screen.findByRole('alert')).toHaveTextContent('Save was confirmed, but the roster refresh did not complete');
+  expect(screen.getByRole('alert')).toHaveTextContent('Do not repeat the write');
+  expect(screen.queryByText(/private server detail|Unable to save/)).not.toBeInTheDocument();
+  expect(tables.employees.filter(row => row.name === 'Fictional delayed employee')).toHaveLength(1);
+  // Even an explicitly requested inspection cannot acknowledge a failed read.
+  await userEvent.click(screen.getByRole('button', { name: 'Inspect current roster' }));
+  await screen.findByText('Unable to load shared data. Check your connection and refresh access.');
+  expect(screen.queryByRole('button', { name: 'I inspected the roster; allow new edits' })).not.toBeInTheDocument();
+  refreshFails = false;
+  fireEvent.click(screen.getByRole('button', { name: 'Reload management / discard draft' }));
+  expect(await screen.findByText('Fictional delayed employee · Active')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'I inspected the roster; allow new edits' })).not.toBeInTheDocument();
+  await inspectAndAcknowledge();
+  expect(mutations()).toHaveLength(1);
+});
+
+it.each(['insert', 'patch'])('blocks repeated Save submissions for an in-flight %s and never automatically repeats it', async kind => {
+  const pending = deferred<Response>();
+  intercept = (_table, _url, init) => ['POST', 'PATCH'].includes(init.method ?? '') ? pending.promise : undefined;
+  render(manager()); await loaded();
+  if (kind === 'insert') {
+    fireEvent.click(screen.getByRole('button', { name: 'Add shared employee' }));
+    fireEvent.change(screen.getByLabelText('Shared employee name'), { target: { value: 'Fictional single insert' } });
+    fireEvent.change(screen.getByLabelText('Default shared job role'), { target: { value: id(4) } });
+  } else fireEvent.click(screen.getByRole('button', { name: 'Edit shared employee Fictional Avery' }));
+  const form = screen.getByRole('form', { name: kind === 'insert' ? 'Add shared employee' : 'Edit shared employee' });
+  act(() => { fireEvent.submit(form); fireEvent.submit(form); });
+  await waitFor(() => expect(mutations()).toHaveLength(1));
+  fireEvent.submit(form);
+  expect(mutations()).toHaveLength(1);
+  const request = mutations()[0];
+  if (kind === 'patch') expect(request.url.searchParams.get('xmin')).toBe('eq.703');
+  expect(JSON.parse(String(request.init.body)).default_weight_override).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Reload management / discard draft' }));
+  await loaded();
+  await act(async () => pending.resolve(query(request.table, request.url, request.init)));
+  await inspectAndAcknowledge(kind === 'insert' ? 'Fictional single insert · Active' : 'Fictional Avery · Active');
+  expect(mutations()).toHaveLength(1);
+});
+
+it.each(['account', 'restaurant', 'project'])('isolates recovery flags and data across a %s change, retaining the original scope warning', async kind => {
+  const pending = deferred<Response>();
+  intercept = (_table, _url, init) => init.method === 'POST' ? pending.promise : undefined;
+  const view = render(manager()); await loaded(); await submitEmployee();
+  const request = mutations()[0];
+  if (kind === 'account') {
+    auth.getSession.mockResolvedValue({ data: { session: { ...session, user: { id: id(99) } } }, error: null });
+    auth.getUser.mockResolvedValue({ data: { user: { id: id(99) } }, error: null });
+    view.rerender(<ManageSharedRoster client={client} userId={id(99)} organizationId={org} onClose={() => {}} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('access could not be verified');
+  } else if (kind === 'restaurant') {
+    tables.organization_memberships.push({ organization_id: foreign, user_id: userId, role: 'closer', is_active: true });
+    view.rerender(<ManageSharedRoster client={client} userId={userId} organizationId={foreign} onClose={() => {}} />);
+    expect(await loaded()).toBeEnabled();
+  } else {
+    // New SDK client identity represents a different project. Its own reads must
+    // still verify access; the original project's recovery flags do not transfer.
+    view.rerender(<ManageSharedRoster client={{ ...client } as SupabaseClient} userId={userId} organizationId={org} onClose={() => {}} />);
+    expect(await loaded()).toBeEnabled();
+  }
+  expect(request.init.signal?.aborted).toBe(true);
+  expect(screen.queryByText(/Save could not be confirmed|earlier save is still settling/)).not.toBeInTheDocument();
+  expect(screen.queryByText('Fictional delayed employee · Active')).not.toBeInTheDocument();
+  await act(async () => pending.resolve(query(request.table, request.url, request.init)));
+  expect(screen.queryByText('Save confirmed. Shared roster refreshed.')).not.toBeInTheDocument();
+  auth.getSession.mockResolvedValue({ data: { session }, error: null });
+  auth.getUser.mockResolvedValue({ data: { user: session.user }, error: null });
+  view.rerender(manager());
+  await loaded();
+  expect(screen.getByRole('alert')).toHaveTextContent('Save could not be confirmed');
+  expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeDisabled();
+  await inspectAndAcknowledge();
+  expect(mutations()).toHaveLength(1);
+});
+
+it('discards a cancelled inspection and requires a later verified inspection before acknowledgment', async () => {
+  intercept = (_table, _url, init) => {
+    if (init.method === 'POST') throw new TypeError('private network detail');
+  };
+  render(manager()); await loaded(); await submitEmployee();
+  await screen.findByRole('alert');
+  const lateRead = deferred<Response>();
+  let captured: Response | undefined;
+  intercept = (table, url, init) => {
+    if (table === 'job_roles' && !captured) { captured = query(table, url, init); return lateRead.promise; }
+  };
+  fireEvent.click(screen.getByRole('button', { name: 'Inspect current roster' }));
+  await waitFor(() => expect(captured).toBeDefined());
+  act(() => emit());
+  await loaded();
+  await act(async () => lateRead.resolve(captured!));
+  expect(screen.queryByRole('button', { name: 'I inspected the roster; allow new edits' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeDisabled();
+  await inspectAndAcknowledge('Fictional Avery · Active');
+  expect(mutations()).toHaveLength(1);
 });

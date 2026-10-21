@@ -36,7 +36,7 @@ pending and separate from Issue #36. No hosted Supabase action was performed.
 The client uses React 19, TypeScript 6, Vite 8, and Tailwind CSS 4. [src/App.tsx](src/App.tsx) selects local preview or the DEV Auth gate; [src/Calculator.tsx](src/Calculator.tsx) handles the unchanged calculator inputs and browser-local roster. See [frontend Auth setup and acceptance](docs/AUTH.md). The pure TypeScript engine in [src/calculation.ts](src/calculation.ts) parses money into integer cents, scales weights to integer hundredths, and uses BigInt intermediates for exact proportional arithmetic and signed reconciliation.
 
 The merged baseline runs 153 frontend tests plus 14 offline provisioning groups.
-The Issue #38 branch adds 86 weight/management tests (239 frontend tests total).
+The Issue #38 branch adds 99 weight/management tests (252 frontend tests total).
 ESLint and TypeScript also check the source. GitHub Actions runs frontend tests,
 lint, and the production build on pull requests and pushes to `main`.
 

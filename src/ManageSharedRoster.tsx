@@ -1,28 +1,42 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadEditingRoster, RosterEditError, saveRosterDraft } from './sharedRosterEditingData';
 import type { EditEmployee, EditRole, EditSnapshot, RosterDraft } from './sharedRosterEditingData';
 import { sharedWeightInput } from './sharedRosterWeights';
+import { rosterSaveScope } from './sharedRosterSaveScope';
 
 const button = 'rounded border border-blue-700 text-blue-800 px-3 py-2 disabled:opacity-50';
 type Editor = { kind: 'role'; row?: EditRole } | { kind: 'employee'; row?: EditEmployee };
 type State = { loading: boolean; snapshot?: EditSnapshot; error?: string; saving?: boolean; message?: string };
+type Props = { client: SupabaseClient; userId: string; organizationId: string; onClose: () => void };
 
-export default function ManageSharedRoster({ client, userId, organizationId, onClose }: {
-  client: SupabaseClient; userId: string; organizationId: string; onClose: () => void;
-}) {
+export default function ManageSharedRoster(props: Props) {
+  const scope = rosterSaveScope(props.client, props.userId, props.organizationId);
+  // Also isolate direct prop switches, independent of the Auth/parent keys.
+  return <RosterManager key={scope.id} {...props} scope={scope} />;
+}
+
+function RosterManager({ client, userId, organizationId, onClose, scope }: Props & { scope: ReturnType<typeof rosterSaveScope> }) {
   const [revision, setRevision] = useState(0);
   const [state, setState] = useState<State>({ loading: true });
   const [editor, setEditor] = useState<Editor>();
   const controller = useRef<AbortController | undefined>(undefined);
-  const pending = useRef(false);
+  const saveState = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
+  const inspection = useRef<ReturnType<typeof scope.getSnapshot>>(null);
   const reset = useCallback(() => {
+    scope.interrupt();
     controller.current?.abort();
-    pending.current = false;
+    inspection.current = null;
     setEditor(undefined);
     setState({ loading: true });
     setRevision(value => value + 1);
-  }, []);
+  }, [scope]);
+  const inspect = () => {
+    reset();
+    // Only this explicit action can qualify a read for acknowledgment. An
+    // automatic/reset read may race ahead of a mutation and proves no rollback.
+    inspection.current = scope.getSnapshot();
+  };
   useEffect(() => {
     // Cancel immediately inside the event, including token refresh. New table
     // operations wait for their own server identity verification after the event.
@@ -32,42 +46,60 @@ export default function ManageSharedRoster({ client, userId, organizationId, onC
   useEffect(() => {
     const active = new AbortController();
     controller.current = active;
+    const inspecting = inspection.current;
+    inspection.current = null;
     const expiry = setTimeout(reset, 60_000);
     void loadEditingRoster(client, userId, organizationId, active.signal).then(snapshot => {
-      if (!active.signal.aborted) setState({ loading: false, snapshot });
+      if (!active.signal.aborted) {
+        setState({ loading: false, snapshot });
+        if (inspecting) scope.inspected(inspecting);
+      }
     }).catch(error => {
       if (!active.signal.aborted) setState({ loading: false, error: error instanceof RosterEditError ? error.message : 'Unable to verify shared roster access. Refresh access to retry.' });
     });
-    return () => { active.abort(); clearTimeout(expiry); };
-  }, [client, userId, organizationId, revision, reset]);
+    return () => { scope.interrupt(); active.abort(); clearTimeout(expiry); };
+  }, [client, userId, organizationId, revision, reset, scope]);
 
   const save = async (draft: RosterDraft, id?: string) => {
     const active = controller.current;
     const snapshot = state.snapshot;
-    if (pending.current || !active || active.signal.aborted || !snapshot) return;
-    pending.current = true;
+    if (!active || active.signal.aborted || !snapshot) return;
+    const attempt = scope.begin();
+    if (!attempt) return;
+    let confirmed = false;
     setState(previous => ({ ...previous, saving: true, error: undefined, message: undefined }));
     try {
-      await saveRosterDraft(client, userId, organizationId, active.signal, snapshot, draft, id);
+      await saveRosterDraft(client, userId, organizationId, active.signal, snapshot, draft, id, () => scope.dispatch(attempt));
+      confirmed = true;
+      scope.confirm(attempt);
       const fresh = await loadEditingRoster(client, userId, organizationId, active.signal);
-      if (!active.signal.aborted) {
+      if (!active.signal.aborted && !scope.getSnapshot()?.recovery) {
+        scope.clear(attempt);
         setEditor(undefined);
         setState({ loading: false, snapshot: fresh, message: 'Save confirmed. Shared roster refreshed.' });
+      } else if (!active.signal.aborted) {
+        setEditor(undefined);
+        setState({ loading: false, snapshot: fresh });
       }
     } catch (error) {
+      const uncertain = confirmed || (scope.wasDispatched(attempt)
+        && (active.signal.aborted || !(error instanceof RosterEditError) || error.uncertain));
+      if (uncertain) scope.requireInspection(attempt);
+      else scope.clear(attempt);
       if (!active.signal.aborted) {
-        const retry = error instanceof RosterEditError && !error.reload;
+        const retry = !uncertain && error instanceof RosterEditError && !error.reload;
         if (!retry) setEditor(undefined);
         setState({ loading: false, snapshot: retry ? snapshot : undefined,
-          error: error instanceof RosterEditError ? error.message : 'Save could not be confirmed. Refresh the roster and inspect it before another save.' });
+          error: uncertain ? undefined : error instanceof RosterEditError ? error.message : 'Unable to save. Refresh access before editing.' });
       }
-    } finally { if (controller.current === active) pending.current = false; }
+    } finally { scope.settle(attempt); }
   };
   const snapshot = state.snapshot;
+  const blocked = !!saveState || !!state.saving;
   return <section aria-label="Manage shared roster · DEV" className="space-y-4">
     <h3 className="text-lg font-bold">Manage shared roster · DEV</h3>
     <p>Permanent default share weights, not fixed percentages or today’s shift participation. Shared records never enter the browser-local calculator.</p>
-    <p className="text-sm">Editing snapshots expire after one minute. Refresh, focus, offline, access or account changes discard drafts. An uncertain addition must be inspected before adding it again.</p>
+    <p className="text-sm">Editing snapshots expire after one minute. Refresh, focus, offline, access or account changes discard drafts. An interrupted request may still commit; inspect the roster before repeating an addition, even after restarting the page.</p>
     <div className="flex flex-wrap gap-2">
       <button className={button} onClick={reset}>Reload management / discard draft</button>
       <button className={button} onClick={onClose}>Close management</button>
@@ -75,19 +107,33 @@ export default function ManageSharedRoster({ client, userId, organizationId, onC
     {state.loading && <p role="status">Verifying access and exact shared defaults…</p>}
     {state.saving && <p role="status">Saving shared roster…</p>}
     {state.message && <p role="status">{state.message}</p>}
-    {state.error && <p role="alert">{state.error}</p>}
+    {saveState?.recovery && <div role="alert" className="border rounded p-3 space-y-2">
+      <p>{saveState.confirmed
+        ? 'Save was confirmed, but the roster refresh did not complete. Do not repeat the write.'
+        : 'Save could not be confirmed. It may have committed even though the request was cancelled or failed.'}</p>
+      <p>Reloading does not prove the write failed. A slow write may appear later. Inspect the current roster and acknowledge what you found before making another change; do not repeat an addition just because it is absent.</p>
+      {saveState.pending && <p>The earlier save is still settling. New writes remain blocked.</p>}
+      <button className={button} disabled={saveState.pending || state.loading} onClick={inspect}>Inspect current roster</button>
+      {saveState.inspected && snapshot && <button className={button} onClick={() => {
+        if (!controller.current?.signal.aborted && scope.acknowledge()) {
+          setState(previous => ({ ...previous, message: 'Inspection acknowledged. No write was retried.' }));
+        }
+      }}>I inspected the roster; allow new edits</button>}
+      {state.error && <p>{state.error}</p>}
+    </div>}
+    {state.error && !saveState?.recovery && <p role="alert">{state.error}</p>}
     {snapshot && <>
       <div className="grid sm:grid-cols-2 gap-6">
         <div className="space-y-3"><h4 className="font-semibold">Manage job roles</h4>
-          <button className={button} disabled={state.saving} onClick={() => setEditor({ kind: 'role' })}>Add shared job role</button>
+          <button className={button} disabled={blocked} onClick={() => setEditor({ kind: 'role' })}>Add shared job role</button>
           {!snapshot.roles.length && <p>No shared job roles.</p>}
           <ul className="space-y-3">{snapshot.roles.map(row => <li key={row.id} className="break-words border rounded p-3">
             <p>{row.name} · {row.is_active ? 'Active' : 'Inactive'}</p><p>Default share weight: {row.default_weight}</p>
-            <button className={button} disabled={state.saving} aria-label={`Edit shared role ${row.name}`} onClick={() => setEditor({ kind: 'role', row })}>Edit / activate / deactivate</button>
+            <button className={button} disabled={blocked} aria-label={`Edit shared role ${row.name}`} onClick={() => setEditor({ kind: 'role', row })}>Edit / activate / deactivate</button>
           </li>)}</ul>
         </div>
         <div className="space-y-3"><h4 className="font-semibold">Manage employees</h4>
-          <button className={button} disabled={state.saving || !snapshot.roles.some(row => row.is_active)} onClick={() => setEditor({ kind: 'employee' })}>Add shared employee</button>
+          <button className={button} disabled={blocked || !snapshot.roles.some(row => row.is_active)} onClick={() => setEditor({ kind: 'employee' })}>Add shared employee</button>
           {!snapshot.roles.some(row => row.is_active) && <p>Add or activate a role before adding an employee.</p>}
           {!snapshot.employees.length && <p>No shared employees.</p>}
           <ul className="space-y-3">{snapshot.employees.map(row => {
@@ -98,12 +144,12 @@ export default function ManageSharedRoster({ client, userId, organizationId, onC
               <p>{row.name} · {row.is_active ? 'Active' : 'Inactive'}</p>
               <p>Default role: {role.name} · {role.is_active ? 'Active' : 'Inactive'}</p>
               <p>Effective default share weight: {row.default_weight_override ?? role.default_weight} · {source}</p>
-              <button className={button} disabled={state.saving} aria-label={`Edit shared employee ${row.name}`} onClick={() => setEditor({ kind: 'employee', row })}>Edit / activate / deactivate</button>
+              <button className={button} disabled={blocked} aria-label={`Edit shared employee ${row.name}`} onClick={() => setEditor({ kind: 'employee', row })}>Edit / activate / deactivate</button>
             </li>;
           })}</ul>
         </div>
       </div>
-      {editor && <RosterForm key={`${editor.kind}:${editor.row?.id ?? 'new'}`} editor={editor} snapshot={snapshot} busy={!!state.saving}
+      {editor && !saveState?.recovery && <RosterForm key={`${editor.kind}:${editor.row?.id ?? 'new'}`} editor={editor} snapshot={snapshot} busy={blocked}
         onSave={(draft, id) => void save(draft, id)} onCancel={() => setEditor(undefined)} />}
     </>}
   </section>;

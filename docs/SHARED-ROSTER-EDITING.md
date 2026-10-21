@@ -83,11 +83,39 @@ clock behavior during OS sleep. There is no float/timestamp fallback
 if version transport is unsupported or malformed. System-column compatibility on
 the owner's supported stack remains part of Mac acceptance.
 
-An uncertain save removes its form and blocks further writes until a fresh reload.
-It never automatically resends an INSERT/PATCH. After an uncertain addition the
-owner must inspect the refreshed roster before explicitly creating another row;
-duplicate employee names are legal, so names are not idempotency keys. There is no
-durable exactly-once delivery or automatic deduplication claim.
+A dispatched save may still commit after fetch is aborted. Reload, Auth refresh,
+expiry, focus and component unmount discard drafts/results but **do not clear the
+save lock or its uncertainty**. A small tab-memory record keeps only lifecycle
+flags, keyed independently by SDK client/project, verified user and restaurant;
+no draft, roster row, name or token is retained in that record. Other scopes see
+neither its warning nor prior rows. Returning to the affected scope restores the
+recovery requirement.
+
+New writes remain blocked while the earlier client operation is settling and while
+recovery is required. A normal/background reload cannot clear recovery, even if it
+returns an apparently clean roster before a slow commit. After the client operation
+settles, **Inspect current roster** performs a fresh Auth/membership-verified read;
+only a successful, uncancelled inspection enables **I inspected the roster; allow
+new edits**. Both actions are required. Failed/cancelled reads, Auth changes and
+expiry invalidate inspection eligibility. Acknowledgment enables deliberate new
+edits; it never retries the old INSERT/PATCH or restores its draft.
+
+An acknowledged mutation followed by a failed/interrupted roster refresh is reported
+as **Save was confirmed, but the roster refresh did not complete**, with the same
+inspection/acknowledgment gate. It is not presented as a failed write to resubmit.
+If the adapter cannot verify the write response/current access, the outcome remains
+explicitly uncertain. Known preflight/validation/database rejection and zero-row
+conflicts retain their existing safe errors without claiming a successful save.
+
+This is V1 recovery, not idempotency: fetch settlement does not prove database
+completion, a slow commit can appear after a read, and an absent row is not proof
+of failure. Do not repeat an addition merely because it is absent; wait/reinspect
+and investigate an ambiguous result. Duplicate employee names are legal, so names
+are not idempotency keys. The record lasts only for the current page's memory:
+browser reload/close, a new SDK client or another tab/device does not carry its
+guard. After restarting the page, independently inspect interrupted saves before
+repeating an addition. No durable exactly-once delivery or automatic deduplication
+is claimed; those require a separately designed server idempotency mechanism.
 
 ## Access, validation and async behavior
 
@@ -102,7 +130,8 @@ durable exactly-once delivery or automatic deduplication claim.
   refresh, immediately abort the current management generation and discard drafts.
   Parent focus/visibility/offline/reconnect/refresh events and the one-minute timer
   also discard drafts. Delayed results cannot restore old data or success messages.
-  A request already committed before cancellation cannot be rolled back by the UI.
+  Cancellation neither rolls back a committed request nor proves an in-flight
+  statement stopped; scoped recovery flags survive these React lifecycle changes.
 - RLS uses database statement visibility. Revocation does not invalidate an issued
   JWT; an already displayed snapshot clears on the next refresh/event/timer, and
   mutation-time checks/RLS deny subsequent unauthorized writes. No instantaneous
@@ -122,12 +151,24 @@ durable exactly-once delivery or automatic deduplication claim.
 ## Verification for this branch
 
 Node 24.19.0 / npm 11.9.0, Linux. Final results are recorded in the PR.
+The SQL/component/full-CLI results below are historical evidence from the initial
+implementation, not reruns of the save-lifecycle correction. The focused correction
+runs offline checks; Docker, real Supabase, hosted and manual browser tests are not
+rerun. Current-head CI results and the correction commit are recorded in the PR.
 
 - `npm run check`: original 153 frontend tests plus 41 exact-weight boundary tests
-  and 45 management/SDK/UI tests; 14 original offline provisioning groups; lint,
+  and 58 management/SDK/UI tests; 14 original offline provisioning groups; lint,
   TypeScript and production build. Run filesystem-writing offline suites in a
   clean temporary source checkout, excluding owner ignored files, to protect the
   owner's independent `work/` artifacts. No owner fixture was read or modified.
+- The focused PR #39 save-lifecycle correction adds 13 mocked SDK/UI regressions:
+  reload/expiry/Auth/focus/unmount with a late commit after the next read, fetch
+  rejection before server commit, confirmed write with failed refresh, repeated
+  INSERT/PATCH submissions, account/tenant/project isolation and explicit recovery
+  including failed/cancelled inspections. These are deterministic offline tests,
+  not real Supabase transaction-cancellation or browser acceptance evidence.
+  All 13 new regressions fail against the `853d23a` baseline while its original
+  239 tests pass; the correction passes all 252 frontend tests.
 - `npm run check:db`: both unchanged clean PostgreSQL security replays and both
   unchanged disposable provisioning replays passed.
 - `npm run check:hosted-preflight`: all 25 unchanged offline/mocked tests passed.
@@ -165,7 +206,8 @@ only reviewed commit, versions, sanitized outcomes and limits publicly.
 | Activation and links | Inactive roles remain distinct and existing links survive. New assignments to inactive roles are disabled. Reactivation works; changing role retains the explicitly submitted override. |
 | Duplicate/FK/permissions and zero rows | Clear safe errors; no success on zero rows; no tenant/ID/timestamp/membership/delete writes. Do not run broad hosted mutation probes as part of this worksheet. |
 | Two independent operators editing the same row | First committed edit wins; stale save conflicts and requires reload. The next edit uses the newly loaded token. Repeat for active flags, names, role and weight. |
-| Slow response, token refresh, logout, account/tenant change, focus/offline, minute expiry | Drafts clear, old requests abort or are ignored; no old restaurant response/success in the new context; no automatic write retry. Inspect before repeating an uncertain addition. |
+| Slow response, token refresh, logout, account/tenant change, focus/offline, minute expiry during saving | Drafts clear and late success cannot enter a new scope. Returning to the original scope retains the uncertainty warning and blocks writes, even after an early reload shows no new row. Wait for the client request to settle, explicitly inspect current rows, then acknowledge; no automatic mutation retry. Other scopes show no prior scope's warning/data. |
+| Acknowledged write followed by a failed refresh | UI says the save was confirmed and the refresh did not complete. Restoring connectivity/reloading alone does not enable another addition; successful explicit inspection and acknowledgment are required. Check failed/cancelled inspection cannot enable acknowledgment and repeated Save clicks create only one request. |
 | Calculator/storage, mobile and accessibility | Shared edits do not change account/legacy browser roster or payouts; $100 at 100:50 stays $66.66/$33.33 + $0.01, or $66/$33 + $1. Check keyboard labels, announced states and narrow layouts. |
 
 ### Separately reviewed exact synthetic cleanup

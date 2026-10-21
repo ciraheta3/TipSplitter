@@ -16,7 +16,8 @@ const uncertain = 'Save could not be confirmed. Refresh the roster and inspect i
 
 export class RosterEditError extends Error {
   readonly reload: boolean;
-  constructor(message: string, reload = true) { super(message); this.reload = reload; }
+  readonly uncertain: boolean;
+  constructor(message: string, reload = true, uncertain = false) { super(message); this.reload = reload; this.uncertain = uncertain; }
 }
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new RosterEditError(invalid);
@@ -103,7 +104,7 @@ function fresh(snapshot: EditSnapshot) {
   if (elapsed >= lifetime || elapsed < 0 || wallElapsed >= lifetime || wallElapsed < 0) throw new RosterEditError('This editing snapshot expired. Refresh the roster before saving.');
 }
 
-export async function saveRosterDraft(client: SupabaseClient, userId: string, org: string, signal: AbortSignal, snapshot: EditSnapshot, draft: RosterDraft, id?: string) {
+export async function saveRosterDraft(client: SupabaseClient, userId: string, org: string, signal: AbortSignal, snapshot: EditSnapshot, draft: RosterDraft, id?: string, onDispatch?: () => void) {
   fresh(snapshot);
   const max = draft.kind === 'role' ? 100 : 160;
   const name = draft.name.trim();
@@ -136,8 +137,11 @@ export async function saveRosterDraft(client: SupabaseClient, userId: string, or
     const request = target
       ? client.from(table).update(body, { count: 'exact' }).eq('organization_id', org).eq('id', target.id).eq('xmin', target.xmin)
       : client.from(table).insert({ organization_id: org, ...body }, { count: 'exact' });
+    // From this point an abort/network failure cannot establish rollback. This
+    // notification contains no data and does not change the request or retries.
+    onDispatch?.();
     result = await request.select(projection).abortSignal(signal).retry(false).returns<unknown[]>();
-  } catch { throw new RosterEditError(uncertain); }
+  } catch { throw new RosterEditError(uncertain, true, true); }
   signal.throwIfAborted();
   if (result.error) {
     const code = result.error.code;
@@ -145,7 +149,7 @@ export async function saveRosterDraft(client: SupabaseClient, userId: string, or
     if (code === '23503') throw new RosterEditError('The default role is unavailable in this restaurant. Refresh the roster.');
     if (code === '23514' || code === '22P02') throw new RosterEditError('The server rejected these values. Check the name and share weight.', false);
     if (code === '42501' || result.status === 401 || result.status === 403) throw new RosterEditError(denied);
-    throw new RosterEditError(uncertain);
+    throw new RosterEditError(uncertain, true, true);
   }
   if (target && Array.isArray(result.data) && result.data.length === 0 && result.count === 0) throw new RosterEditError('This row changed or access was revoked. Nothing was confirmed saved. Refresh the roster before editing again.');
   try {
@@ -155,5 +159,5 @@ export async function saveRosterDraft(client: SupabaseClient, userId: string, or
       || Object.entries(body).some(([key, value]) => record(result.data![0])[key] !== value)) throw new Error();
     await access(client, userId, org, signal);
     return saved;
-  } catch { throw new RosterEditError(uncertain); }
+  } catch { throw new RosterEditError(uncertain, true, true); }
 }
