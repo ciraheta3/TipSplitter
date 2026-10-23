@@ -2,7 +2,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { rosterDiagnostics } from './roster-editing-diagnostics.mjs'
+import { rosterDiagnostics, transportCategory } from './roster-editing-diagnostics.mjs'
+import { waitForLocalAuth, authReadinessDeadlineMs } from './roster-auth-readiness.mjs'
 import { checkRosterEditing } from './check-roster-editing.mjs'
 import { rosterEditingGate } from '../supabase/integration/roster-editing.mjs'
 
@@ -13,15 +14,20 @@ function diagnostic(lines, index = 0) {
   assert.ok(privateText.split(' ').every(part => !lines.join('\n').includes(part)), 'private exception/body must be withheld')
   return JSON.parse(line.slice('Local roster diagnostic: '.length))
 }
-async function earlyFailure(t, { failAt = 1, status = 503, thrown, bodyFailure, malformed = false, shape = false, mismatch = false, fresh = '0', credentialFailure = false, membershipFailure = true, key = 'local-test-key' } = {}) {
+async function earlyFailure(t, { failAt = 1, status = 503, thrown, bodyFailure, malformed = false, shape = false, mismatch = false, fresh = '0', credentialFailure = false, membershipFailure = true, key = 'local-test-key', healthStatus = 200 } = {}) {
   t.mock.method(console, 'log', () => {})
-  let requests = 0, fixtureWrites = 0
+  let requests = 0, fixtureWrites = 0, healthRequests = 0
   let identity = randomUUID()
   const paths = []
   t.mock.method(globalThis, 'fetch', async (input, init) => {
     const url = new URL(String(input))
     assert.ok(url.origin === 'http://127.0.0.1:54321', 'offline fixture must remain local')
     assert.ok(init.redirect === 'error' && init.signal instanceof AbortSignal, 'redirect and abort guards retained')
+    if (url.pathname === '/auth/v1/health') {
+      healthRequests++
+      assert.equal(init.method, 'GET')
+      return Response.json({ name: 'GoTrue', version: 'test' }, { status: healthStatus })
+    }
     paths.push(url.pathname)
     requests++
     if (requests === failAt) {
@@ -61,6 +67,7 @@ async function earlyFailure(t, { failAt = 1, status = 503, thrown, bodyFailure, 
   assert.ok(!output.some(line => line.includes('passed on both replays')), 'no false gate pass')
   const detail = diagnostic(errors)
   assert.equal(detail.replay, 2)
+  assert.equal(healthRequests, credentialFailure || fresh !== '0' ? 0 : 1)
   return { detail, requests, fixtureWrites, paths }
 }
 
@@ -222,4 +229,180 @@ test('diagnostic state resets between stages and runs; arbitrary values are neve
   assert.throws(() => next.failure(privateText), /^Error: Invalid diagnostic category\.$/)
   next.failure('http-status', privateText)
   assert.ok(!next.format(new Error(privateText)).includes(privateText))
+})
+
+const localConfig = { API_URL: 'http://127.0.0.1:54321', ANON_KEY: privateText }
+const healthy = () => Response.json({ name: 'GoTrue', version: 'test' })
+function readinessFixture(t, respond) {
+  let elapsed = 0, requests = 0
+  const diagnostics = rosterDiagnostics()
+  diagnostics.replay(2)
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    assert.ok(url === `${localConfig.API_URL}/auth/v1/health`, 'only fixed local health route')
+    assert.equal(init.method, 'GET')
+    assert.equal(init.redirect, 'error')
+    assert.ok(init.signal instanceof AbortSignal)
+    assert.deepEqual(Object.keys(init.headers), ['apikey'])
+    assert.ok(init.headers.apikey === privateText, 'only the local API key')
+    assert.equal(init.body, undefined)
+    return respond(++requests, init)
+  })
+  return {
+    diagnostics, requests: () => requests, elapsed: () => elapsed,
+    run: () => waitForLocalAuth(localConfig, diagnostics, { now: () => elapsed, pause: async ms => { elapsed += ms } }),
+  }
+}
+
+test('read-only readiness recovers from gateway unavailability and connection refusal', async t => {
+  const f = readinessFixture(t, n => {
+    if (n === 1) return new Response(privateText, { status: 502 })
+    if (n === 2) throw new TypeError(privateText, { cause: { code: 'ECONNREFUSED', address: privateText } })
+    return healthy()
+  })
+  await f.run()
+  assert.equal(f.requests(), 3)
+  assert.equal(f.elapsed(), 1000)
+  // A later failure must not retain an earlier HTTP status/deadline marker.
+  assert.deepEqual(diagnostic([f.diagnostics.format(new Error(privateText))]), { replay: 2, stage: 'auth-readiness', fixture: 0, category: 'operation-failed' })
+})
+
+test('permanent connection refusal ends at the fixed deadline with no write requests', async t => {
+  const f = readinessFixture(t, () => { throw new TypeError(privateText, { cause: { code: 'ECONNREFUSED' } }) })
+  await assert.rejects(f.run(), error => {
+    assert.deepEqual(diagnostic([f.diagnostics.format(error)]), { replay: 2, stage: 'auth-readiness', fixture: 0, category: 'connection-refused', deadlineExceeded: true })
+    return true
+  })
+  assert.equal(f.elapsed(), authReadinessDeadlineMs)
+  assert.equal(f.requests(), 60)
+})
+
+test('persistent gateway 503 fails at the deadline and retains only safe HTTP status', async t => {
+  const f = readinessFixture(t, () => new Response(privateText, { status: 503 }))
+  await assert.rejects(f.run(), error => {
+    assert.deepEqual(diagnostic([f.diagnostics.format(error)]), { replay: 2, stage: 'auth-readiness', fixture: 0, category: 'http-status', httpStatus: 503, deadlineExceeded: true })
+    return true
+  })
+  assert.equal(f.elapsed(), authReadinessDeadlineMs)
+})
+
+for (const status of [301, 401, 403, 404, 429, 500]) {
+  test(`readiness HTTP ${status} fails immediately without signup or status retries`, async t => {
+    const f = readinessFixture(t, () => new Response(privateText, { status }))
+    await assert.rejects(f.run(), error => diagnostic([f.diagnostics.format(error)]).httpStatus === status)
+    assert.equal(f.requests(), 1)
+    assert.equal(f.elapsed(), 0)
+  })
+}
+
+test('readiness refuses malformed JSON and an unexpected health service', async t => {
+  for (const [response, category] of [[new Response(privateText), 'invalid-json'], [Response.json({ name: privateText }), 'response-shape']]) {
+    const f = readinessFixture(t, () => response)
+    await assert.rejects(f.run(), error => diagnostic([f.diagnostics.format(error)]).category === category)
+    assert.equal(f.requests(), 1)
+  }
+})
+
+test('readiness cannot accept an otherwise healthy response after its total deadline', async t => {
+  const diagnostics = rosterDiagnostics()
+  let elapsed = 0
+  t.mock.method(globalThis, 'fetch', async () => {
+    elapsed = authReadinessDeadlineMs
+    return healthy()
+  })
+  await assert.rejects(waitForLocalAuth(localConfig, diagnostics, { now: () => elapsed }), error => {
+    const detail = diagnostic([diagnostics.format(error)])
+    return detail.category === 'timeout' && detail.deadlineExceeded === true
+  })
+})
+
+for (const phase of ['fetch', 'body']) test(`a hung health ${phase} is aborted within the remaining total budget`, async t => {
+  const diagnostics = rosterDiagnostics()
+  let reads = 0, elapsed = 0, requests = 0
+  t.mock.method(globalThis, 'fetch', (_url, init) => {
+    requests++
+    const hang = () => new Promise((_resolve, reject) => {
+      const watchdog = setTimeout(() => reject(new Error('Health request did not abort.')), 1000)
+      init.signal.addEventListener('abort', () => {
+        clearTimeout(watchdog)
+        elapsed = authReadinessDeadlineMs
+        reject(phase === 'fetch' ? init.signal.reason : new DOMException(privateText, 'AbortError'))
+      }, { once: true })
+    })
+    return phase === 'fetch' ? hang() : { status: 200, json: hang }
+  })
+  await assert.rejects(waitForLocalAuth(localConfig, diagnostics, {
+    now: () => ++reads === 1 ? 0 : elapsed || authReadinessDeadlineMs - 5,
+  }), error => {
+    const detail = diagnostic([diagnostics.format(error)])
+    return detail.category === 'timeout' && detail.deadlineExceeded === true
+  })
+  assert.equal(requests, 1)
+})
+
+test('readiness refuses nonlocal URLs before sending any request', async t => {
+  let requests = 0
+  t.mock.method(globalThis, 'fetch', async () => { requests++; return healthy() })
+  for (const API_URL of ['https://example.test', 'http://127.0.0.1:54321@external.test', 'http://127.0.0.1:54321/redirect']) {
+    await assert.rejects(waitForLocalAuth({ ...localConfig, API_URL }, rosterDiagnostics()))
+  }
+  assert.equal(requests, 0)
+})
+
+test('second replay readiness failure prevents signup and fixture SQL but still cleans up', async t => {
+  const result = await earlyFailure(t, { healthStatus: 401 })
+  assert.equal(result.detail.stage, 'auth-readiness')
+  assert.equal(result.requests, 0)
+  assert.equal(result.fixtureWrites, 0)
+})
+
+test('every gate invocation waits for fresh health before one signup attempt', async t => {
+  t.mock.method(console, 'log', () => {})
+  let healthRequests = 0, signups = 0, releaseHealth, observedHealth
+  t.mock.method(globalThis, 'fetch', async input => {
+    if (String(input).endsWith('/health')) {
+      healthRequests++
+      return { status: 200, json: () => new Promise(resolve => { releaseHealth = resolve; observedHealth() }) }
+    }
+    assert.ok(String(input).endsWith('/signup'), 'no further Auth operation after failed signup')
+    signups++
+    throw new TypeError(privateText, { cause: { code: 'ECONNRESET' } })
+  })
+  for (let pass = 1; pass <= 2; pass++) {
+    const started = new Promise(resolve => { observedHealth = resolve })
+    const diagnostics = rosterDiagnostics()
+    const run = rosterEditingGate({ credentials: () => localConfig, diagnostics, sql: query => {
+      assert.ok(query.startsWith('SELECT (SELECT count(*)'), 'no membership write before verified Auth')
+      return '0'
+    } })
+    await started
+    assert.equal(signups, pass - 1, 'signup waits for the health body')
+    releaseHealth({ name: 'GoTrue', version: 'test' })
+    await assert.rejects(run, error => {
+      const detail = diagnostic([diagnostics.format(error)])
+      return detail.stage === 'auth-signup' && detail.category === 'connection-reset'
+    })
+    assert.equal(signups, pass, 'failed signup is never retried')
+  }
+  assert.equal(healthRequests, 2, 'readiness success is not cached between replays')
+})
+
+test('transport classification is fixed, bounded and private, including nested causes', () => {
+  for (const [code, expected] of [
+    ['ECONNREFUSED', 'connection-refused'], ['ECONNRESET', 'connection-reset'],
+    ['EPIPE', 'connection-reset'], ['UND_ERR_SOCKET', 'socket-closed'],
+    ['ETIMEDOUT', 'timeout'], ['UND_ERR_CONNECT_TIMEOUT', 'timeout'],
+    ['UND_ERR_HEADERS_TIMEOUT', 'timeout'], ['UND_ERR_BODY_TIMEOUT', 'timeout'],
+    ['ENOTFOUND', 'dns-failure'], ['EAI_AGAIN', 'dns-failure'],
+    ['ENETUNREACH', 'network-unreachable'], ['EHOSTUNREACH', 'network-unreachable'],
+    [privateText, 'transport'],
+  ]) {
+    const error = new TypeError(privateText, { cause: new AggregateError([Object.assign(new Error(privateText), { code, address: privateText })], privateText) })
+    const diagnostics = rosterDiagnostics()
+    diagnostics.stage('auth-signup', 1)
+    diagnostics.failure('transport')
+    assert.equal(diagnostic([diagnostics.format(error)]).category, expected)
+  }
+  const cyclic = new Error(privateText)
+  cyclic.cause = cyclic
+  assert.equal(transportCategory(cyclic), 'transport')
 })

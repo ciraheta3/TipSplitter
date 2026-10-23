@@ -58,67 +58,87 @@ The separate `check:roster-editing` command runs the same feature suite with the
 existing guarded local Supabase CLI plumbing, audits and two clean migration replays.
 The original `check:supabase` security suite remains independent and unchanged.
 
-### Second-replay investigation (PR #39)
+### Second-replay Auth readiness correction (PR #39)
 
-The owner reports that Mac `check`, `check:db` and the component gate passed;
-the full editing gate completed replay 1 but failed after replay 2's audit and
-before its first Auth/fixture success message. **The exact failing operation and
-root cause are not established.** The old catch suppressed every exception, so
-that log interval cannot distinguish these operations:
+The owner reran diagnostic commit `9577911` on Mac: replay 1 passed every
+assertion; replay 2 reset and passed its security audit, then reported
+`replay=2, stage=auth-signup, fixture=1, category=transport`. This establishes that
+credential discovery and the empty-fixture assertion passed, and the first signup
+fetch rejected before returning an HTTP response. It does not establish whether
+the request reached Auth or committed. No roster application operation or
+membership fixture write had run in that replay.
 
-1. Guarded local CLI credential discovery and the empty Auth/organization fixture
-   assertion. The catalog/ledger audit does not assert fixture emptiness.
-2. Four sequential signup, password sign-in, `/user` verification and identity
-   comparisons, including HTTP status, JSON parsing and expected response shape.
-3. Trusted organization/membership fixture transaction and SDK client setup.
+The pinned upstream sources establish a lifecycle gap:
 
-The lifecycle remains: start once; reset, audit and run the entire gate twice;
-finally `stop --no-backup`, even on failure. Thus an empty `docker ps` afterward
-is consistent with deliberate cleanup and is not evidence of a container crash.
-The audit checks PostgreSQL catalogs/ledger and PostgREST configuration, not Auth
-HTTP readiness. The component gate starts its services fresh and runs once; it
-does not exercise CLI reset, Kong or second-replay service recovery.
+- [CLI 2.120.0 database recreation](https://github.com/supabase/cli/blob/753520fa7202ed5f8b25883a4c0aa7e5e9ad1fc4/apps/cli/src/command-internal/db-bootstrap/recreate-local-database.ts#L289)
+  waits for PostgreSQL health, initializes the database and restarts services.
+- [Service restart and Kong reload](https://github.com/supabase/cli/blob/753520fa7202ed5f8b25883a4c0aa7e5e9ad1fc4/apps/cli/src/command-internal/db-bootstrap/restart-services.ts#L101)
+  restarts Auth/storage/realtime/pooler **without waiting for their health**, then
+  reloads Kong to refresh upstream addresses. PostgREST reconnects itself.
+- [GoTrue v2.197.0 health handler](https://github.com/supabase/auth/blob/4eee58f296d9698a1c2c0ae14d7a0b379c7622d3/internal/api/api.go#L485)
+  exposes GET `/health`, returning HTTP 200 and service metadata. The CLI's
+  [Kong route](https://github.com/supabase/cli/blob/753520fa7202ed5f8b25883a4c0aa7e5e9ad1fc4/apps/cli/src/commands/start/templates/kong.yml.ts#L42)
+  forwards `/auth/v1/` to Auth. The database audit does not probe that HTTP route.
 
-Ranked investigation priorities, **not confirmed causes**:
+This supports a read-only readiness check after each reset/audit. It does **not**
+prove which service or socket caused the owner's transport error. A separate
+loopback Node experiment closing pooled connections during a synchronous child
+process observed zero failures in five trials; stale connections remain an
+unconfirmed hypothesis. No full CLI stack was attempted in Cloud.
 
-1. An Auth/gateway request failing after reset: transport/readiness, timeout or
-   unexpected HTTP response, including throttling. Configured sign-in/signup
-   rate limit is 100; no 429 or other response has actually been observed.
-2. A nonempty fixture or credential/status failure after reset. A successful
-   migration/catalog audit alone does not exclude these.
-3. Auth response/identity mismatch, fixture SQL or SDK setup failure. Each gate
-   creates new fixture IDs, users, credentials and clients. The cached application
-   adapter runs later; its resolver and navigator override are restored, and its
-   Auth client disables persistence/automatic refresh. No deterministic application
-   defect or leaked prior-replay identity has been demonstrated.
+`roster-auth-readiness.mjs` now probes GET `/auth/v1/health` through the same
+**guarded local API URL**, after fixture emptiness is checked and before any
+signup. It requires HTTP 200 plus GoTrue service metadata. The total monotonic
+budget is **30 seconds**, with at most **2 seconds per attempt including body
+reading**, capped by the remaining budget, and at most 500 ms between attempts.
+Only health GETs retry on transport/read timeouts or HTTP 502/503/504. Other
+received HTTP statuses, malformed JSON, unexpected service metadata and explicit
+cancellation fail closed. Redirects are never followed; late health success after
+the deadline is rejected. A failure still triggers the existing local cleanup.
 
-The change adds diagnostic context, **not a claimed fix for the Mac failure**.
-Failures now print `Local roster diagnostic:` followed by JSON with only a fixed
-stage/category, replay number (1/2; 0 before a replay), fixture ordinal (1–4;
-0 outside Auth setup) and optional HTTP status. Signup/sign-in/verification body
-shapes are checked at their own stage before proceeding. No exception messages,
-stacks, request/response bodies, headers, credentials or identities are printed.
-Later transport/conflict/authorization/adapter/revocation stages and cleanup are
-also distinguished. Cleanup failures cannot erase the original diagnostic.
-There is no new wait, automatic retry, assertion bypass or security/schema change.
+Every replay performs its own readiness check. Signup, sign-in and all database
+writes remain single-attempt operations; a failure after health succeeds is still
+fatal, even if a write might have committed. Both complete migration replays and
+every existing security/authorization/decimal/concurrency assertion remain
+required. The health handler proves API reachability at that instant, **not**
+database readiness, continued availability, authorization or exactly-once delivery.
+The subsequent real Auth and roster assertions remain the authority for those
+capabilities. No application, migration, permission or local-project guard changes
+are part of this correction.
 
-Offline regression coverage is included in `npm test` and can run separately with
-`npm run check:roster-editing:offline`. It injects local actions/SQL/fetch and
-simulates failures; it is not real Auth/reset evidence. Full CLI startup is not
-attempted in Cloud because of the established resource limitation. Current run
-results (Node 24.19.0 / npm 11.9.0, Linux):
+Diagnostics retain fixed labels and bounded fields. Nested Node fetch causes can
+now distinguish `connection-refused`, `connection-reset`, `socket-closed`,
+`dns-failure`, `network-unreachable`, `timeout`, `aborted` and generic `transport`.
+No raw error codes/messages/stacks, addresses, bodies, headers, identities or
+credentials are printed. Readiness exhaustion reports `stage=auth-readiness`,
+`deadlineExceeded=true` and the last safe failure category/optional HTTP status.
+This preserves evidence if the local services never recover, or signup itself
+still fails after readiness. Empty `docker ps` after failure remains consistent
+with the harness's deliberate `stop --no-backup` cleanup.
 
-- `npm run check` passed: 252 frontend tests, 14 provisioning groups, **24 new
-  offline diagnostic tests**, ESLint, TypeScript and production build. Filesystem
-  tests ran in a clean temporary source copy, excluding owner ignored files.
-- `check:roster-editing:components` initially failed at PostgreSQL readiness,
-  before Auth/assertions. A separate disposable PostgreSQL SQL-readiness probe
-  passed; one fresh component rerun then passed all stages with PostgreSQL 17,
-  GoTrue v2.197.0 and PostgREST v16.4. Cleanup completed. The initial Cloud failure
-  is unexplained and is not evidence about the Mac's second replay.
-- Diff checks passed. `check:db` and `check:supabase` were not rerun for this
-  diagnostics change. Baseline CI check/database jobs passed at `acd8966` but do
-  not run the full editing gate. No full CLI or hosted pass is claimed.
+Current checks (Node 24.19.0 / npm 11.9.0, Linux):
+
+- `npm run check`: passed 252 frontend tests, 14 provisioning groups and **41
+  offline harness tests** (17 added for readiness/transport classification),
+  ESLint, TypeScript and production build. Filesystem-writing tests used a clean
+  temporary source copy excluding owner ignored files.
+- `npm run check:roster-editing:components`: passed every stage with real
+  PostgreSQL 17, GoTrue v2.197.0 and PostgREST v16.4, including the new health GET.
+  It still uses mock API roles and direct service routing, with no Kong/CLI reset.
+- A temporary copy of that component harness paused its own GoTrue container for
+  2.5 seconds during the first health GET. At least one health request timed out;
+  subsequent health GETs recovered, exactly four signup requests were sent, and
+  every original gate assertion passed. This controlled outage demonstrates
+  read-only recovery, not reproduction of the Mac reset failure. Cleanup removed
+  the disposable services/network.
+- Offline cases cover recovery from refusal/502, permanent refusal/503 deadlines,
+  hung headers/body abortion, late success rejection, invalid health responses,
+  permanent HTTP errors, local URL guards, zero signup/fixture writes on readiness
+  failure, fresh health on each invocation, single-attempt signup after readiness,
+  and sanitized nested/aggregate socket causes.
+- Full `check:roster-editing` and `check:supabase` remain unexecuted in Cloud.
+  `check:db` and hosted-preflight were not rerun locally for this harness change.
+  Current CI results are recorded in the PR. No full-stack or hosted pass is claimed.
 
 From the owner's existing clean, **unlinked PR #39 worktree**, in host Mac Terminal
 with Node 24, Docker Desktop/default local socket and free ports 54320–54322:
@@ -135,12 +155,11 @@ npm run check:roster-editing
 
 Run serially, with no other use of the dedicated disposable
 `tip-calculator-integration` local project: both resets and final cleanup destroy
-its synthetic data. A pass must include **both complete clean replays**, not just
-two audits. If it fails, retain the sanitized diagnostic line and neighboring
-fixed progress messages plus the tested SHA; do not publish CLI debug/status,
-container environments or Auth logs. Use that evidence before considering a
-bounded readiness correction. Full local Supabase acceptance remains pending
-until the owner completes this run; hosted/browser acceptance remains separate.
+its synthetic data. A pass must include **both complete clean replays**, including
+Auth/roster assertions. If it fails, retain the sanitized diagnostic and nearby
+fixed progress messages plus the tested SHA. Do not publish CLI debug/status,
+container environments or Auth logs. Full Mac local Supabase and separate
+browser/DEV acceptance remain pending; leave PR #39 open for independent review.
 
 ## Concurrent edits and bounded snapshots
 

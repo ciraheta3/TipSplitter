@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import { registerHooks } from 'node:module'
 import { credentials as localCredentials, sql as localSql } from '../../scripts/supabase-local.mjs'
 import { rosterDiagnostics } from '../../scripts/roster-editing-diagnostics.mjs'
+import { waitForLocalAuth } from '../../scripts/roster-auth-readiness.mjs'
 
 const roleProjection = 'id,organization_id,name,is_active,default_weight::text,updated_at,xmin::text'
 const employeeProjection = 'id,organization_id,name,is_active,default_role_id,default_weight_override::text,updated_at,xmin::text'
@@ -27,6 +28,8 @@ export async function rosterEditingGate({ credentials = localCredentials, sql = 
   assert.match(config.API_URL, /^http:\/\/127\.0\.0\.1:\d+$/)
   diagnostics.stage('fresh-fixture')
   same(sql('SELECT (SELECT count(*) FROM auth.users) + (SELECT count(*) FROM public.organizations);'), '0', 'fresh local fixture required')
+  await waitForLocalAuth(config, diagnostics)
+  console.log('Local gate: read-only Auth health through the local API verified.')
   const organizations = [randomUUID(), randomUUID()]
   const authRequest = async (path, body, token) => {
     let response
