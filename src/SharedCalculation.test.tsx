@@ -74,6 +74,8 @@ const panel = (overrides = {}) => <SharedCalculation client={client} userId={use
 const participating = () => screen.getByRole('group', { name: 'Participating employees' });
 async function loaded() { return screen.findByRole('group', { name: 'Participating employees' }); }
 const choose = (name = 'Fictional Avery') => fireEvent.click(within(participating()).getByRole('checkbox', { name: new RegExp(name) }));
+const weightInput = (name = 'Fictional Avery') => screen.getByRole('textbox', { name: `Temporary share weight · ${name}` });
+const editWeight = (value: string, name = 'Fictional Avery') => fireEvent.change(weightInput(name), { target: { value } });
 const reload = () => fireEvent.click(screen.getByRole('button', { name: 'Reload shared roster / clear selection' }));
 const exactReads = () => requests.filter(request => request.url.searchParams.get('select') === calculationEmployeeProjection);
 function emit(event: AuthChangeEvent, candidate: Session | null) { session = candidate; listeners.forEach(callback => callback(event, candidate)); }
@@ -211,7 +213,7 @@ it('displays inactive records and zero defaults, with only active employee/role 
   expect(screen.getByText(/Inactive employee — excluded/)).toBeVisible();
   expect(screen.getByText(/Inactive role — excluded/)).toBeVisible();
   choose();
-  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('Weight: 0');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('Share weight: 0');
 });
 
 it('accepts an authorized empty roster with a visible status and no participants', async () => {
@@ -225,6 +227,7 @@ it('accepts an authorized empty roster with a visible status and no participants
 it('keeps defaults/selection during access checks and only explicitly reloads them without duplicates', async () => {
   const view = render(panel());
   await loaded(); choose();
+  editWeight('75.25');
   fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100' } });
   tables.employees[0].default_weight_override = '50';
   view.rerender(panel({ accessRevision: 1, accessPending: true }));
@@ -233,13 +236,15 @@ it('keeps defaults/selection during access checks and only explicitly reloads th
   view.rerender(panel({ accessRevision: 1, accessPending: false }));
   await loaded();
   expect(within(participating()).getByRole('checkbox')).toBeChecked();
-  expect(screen.getByText('Effective default share weight: 100')).toBeVisible();
+  expect(screen.getByText('Permanent default share weight: 100')).toBeVisible();
+  expect(weightInput()).toHaveValue('75.25');
   expect(exactReads()).toHaveLength(1);
   for (let i = 0; i < 2; i++) {
     reload(); await loaded();
     expect(within(participating()).getAllByRole('checkbox')).toHaveLength(1);
     expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
-    expect(screen.getByText('Effective default share weight: 50')).toBeVisible();
+    expect(screen.getByText('Permanent default share weight: 50')).toBeVisible();
+    expect(weightInput()).toHaveValue('50');
     expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('100');
   }
   expect(exactReads()).toHaveLength(3);
@@ -248,6 +253,7 @@ it('keeps defaults/selection during access checks and only explicitly reloads th
 it.each(['failed', 'partial', 'revoked'])('clears the previous preview and fails visibly on %s reload/check', async kind => {
   const view = render(panel());
   await loaded(); choose();
+  editWeight('13.25');
   if (kind === 'revoked') { tables.organization_memberships = []; view.rerender(panel({ accessRevision: 1 })); }
   else {
     intercept = request => request.table === 'employees' ? kind === 'partial' ? response([employee()], 2) : new Response('{}', { status: 500 }) : undefined;
@@ -299,10 +305,12 @@ it.each(['SIGNED_OUT', 'SIGNED_IN'] as const)('invalidates in-flight reads on %s
 
 it('rechecks same-user token refresh without reloading shared defaults or losing selections', async () => {
   render(panel()); await loaded(); choose();
+  editWeight('75.25');
   act(() => emit('TOKEN_REFRESHED', { ...session!, access_token: 'fictional-new-session' }));
   await loaded();
   expect(within(participating()).getByRole('checkbox')).toBeChecked();
   expect(exactReads()).toHaveLength(1);
+  expect(weightInput()).toHaveValue('75.25');
 });
 
 it('reuses the authorized restaurant selector and clears selected A before loading B', async () => {
@@ -313,11 +321,13 @@ it('reuses the authorized restaurant selector and clears selected A before loadi
   expect(exactReads()).toHaveLength(0);
   fireEvent.change(selector, { target: { value: org } });
   await loaded(); choose();
+  editWeight('13.25');
   fireEvent.change(screen.getByLabelText('Restaurant'), { target: { value: otherOrg } });
   expect(screen.queryByText(/Fictional Avery/)).not.toBeInTheDocument();
   await loaded();
   expect(screen.getByRole('heading', { name: 'Restaurant shared roster · Fictional Moonbeam' })).toBeVisible();
   expect(within(participating()).getByRole('checkbox', { name: /Fictional Blair/ })).not.toBeChecked();
+  expect(weightInput('Fictional Blair')).toHaveValue('100');
 });
 
 it('preserves the browser-local roster, inputs and storage through explicit source switching', async () => {
@@ -331,6 +341,7 @@ it('preserves the browser-local roster, inputs and storage through explicit sour
   fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '42.50' } });
   fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
   await loaded(); choose();
+  editWeight('13.25');
   expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toBeVisible();
   expect(screen.queryByRole('group', { name: 'Employee Fictional Local' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('radio', { name: 'Browser-local roster' }));
@@ -339,6 +350,7 @@ it('preserves the browser-local roster, inputs and storage through explicit sour
   fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
   await loaded();
   expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
+  expect(weightInput()).toHaveValue('100');
   expect(read.mock.calls.every(([key]) => key === accountRosterKey(project, userId))).toBe(true);
   expect(write).not.toHaveBeenCalled();
   expect(localStorage.getItem(accountRosterKey(project, userId))).toBe(saved);
@@ -369,17 +381,20 @@ it('checks focus, reconnect and the minute timer without silently reloading a ru
   render(<SharedRoster client={client} userId={userId} calculationMode />);
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   choose();
+  editWeight('75.25');
   tables.job_roles[0].default_weight = '50';
   for (const event of ['focus', 'online']) {
     const before = requests.filter(request => request.table === 'organization_memberships').length;
     await act(async () => { window.dispatchEvent(new Event(event)); await vi.advanceTimersByTimeAsync(0); });
     expect(requests.filter(request => request.table === 'organization_memberships').length).toBeGreaterThan(before);
     expect(within(participating()).getByRole('checkbox')).toBeChecked();
-    expect(screen.getByText('Effective default share weight: 100')).toBeVisible();
+    expect(screen.getByText('Permanent default share weight: 100')).toBeVisible();
+    expect(weightInput()).toHaveValue('75.25');
   }
   await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
   expect(within(participating()).getByRole('checkbox')).toBeChecked();
   expect(exactReads()).toHaveLength(1);
+  expect(weightInput()).toHaveValue('75.25');
   tables.organization_memberships = [];
   await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
   expect(screen.queryByText(/Fictional Avery/)).not.toBeInTheDocument();
@@ -417,7 +432,7 @@ it('shows total weight overflow visibly and preserves the exact maximum text in 
   tables.job_roles[0].default_weight = '90071992547409.91';
   tables.employees.push({ ...employee(), id: id(7), name: 'Fictional extra', default_weight_override: '0.01' });
   render(panel()); await loaded();
-  expect(screen.getByText('Effective default share weight: 90071992547409.91')).toBeVisible();
+  expect(screen.getByText('Permanent default share weight: 90071992547409.91')).toBeVisible();
   choose();
   fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100.01' } });
   expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$100.01');
@@ -426,4 +441,168 @@ it('shows total weight overflow visibly and preserves the exact maximum text in 
   expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
   choose('Fictional extra');
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('initializes decimal text inputs from inherited and explicit-zero defaults and requires selection to edit', async () => {
+  tables.job_roles[0].default_weight = '100.50';
+  tables.employees.push({ ...employee(), id: id(7), name: 'Fictional Zero', default_weight_override: '0' });
+  render(panel()); await loaded();
+  expect(weightInput()).toHaveValue('100.50');
+  expect(weightInput()).toBeDisabled();
+  expect(weightInput('Fictional Zero')).toHaveValue('0');
+  expect(screen.getByText('Permanent default share weight: 100.50')).toBeVisible();
+  expect(screen.getByText('Permanent default share weight: 0')).toBeVisible();
+  choose(); choose('Fictional Zero');
+  expect(weightInput()).toBeEnabled();
+  expect(weightInput()).toHaveAttribute('inputmode', 'decimal');
+  expect(weightInput()).toHaveAttribute('type', 'text');
+  expect(weightInput()).toHaveClass('min-h-12');
+  expect(screen.getByRole('button', { name: 'Reset Fictional Avery to default' })).toHaveClass('min-h-12');
+  expect(screen.getByText(/Temporary share weights are relative shares, not tip percentages/)).toBeVisible();
+  editWeight('1'); editWeight('25', 'Fictional Zero');
+  fireEvent.click(screen.getByRole('button', { name: 'Reset Fictional Avery to default' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Reset Fictional Zero to default' }));
+  expect(weightInput()).toHaveValue('100.50');
+  expect(weightInput('Fictional Zero')).toHaveValue('0');
+});
+
+it('recalculates independent temporary shares immediately and resets one employee to the frozen default', async () => {
+  tables.employees.push({ ...employee(), id: id(7), name: 'Fictional Casey', default_weight_override: '50' });
+  render(panel()); await loaded(); choose(); choose('Fictional Casey');
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100' } });
+  editWeight('50');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$50.00');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Casey' })).toHaveTextContent('$50.00');
+  editWeight('25', 'Fictional Casey');
+  expect(weightInput()).toHaveValue('50');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$66.66');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Casey' })).toHaveTextContent('$33.33');
+  expect(screen.getByRole('group', { name: 'Unassigned Remainder' })).toHaveTextContent('+$0.01');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Round down to whole dollar' }));
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$66.00');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Casey' })).toHaveTextContent('$33.00');
+  expect(screen.getByRole('group', { name: 'Unassigned Remainder' })).toHaveTextContent('+$1.00');
+  tables.job_roles[0].default_weight = '200';
+  fireEvent.click(screen.getByRole('button', { name: 'Reset Fictional Avery to default' }));
+  expect(weightInput()).toHaveValue('100');
+  expect(weightInput('Fictional Casey')).toHaveValue('25');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$80.00');
+  expect(screen.getByText('Permanent default share weight: 100')).toBeVisible();
+  expect(exactReads()).toHaveLength(1);
+});
+
+it('supports zero and two decimal places without floating-point conversion', async () => {
+  tables.employees.push({ ...employee(), id: id(7), name: 'Fictional Casey', default_weight_override: '0' });
+  render(panel()); await loaded(); choose(); choose('Fictional Casey');
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '1' } });
+  editWeight('0.29'); editWeight('0.01', 'Fictional Casey');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$0.96');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Casey' })).toHaveTextContent('$0.03');
+  expect(screen.getByRole('group', { name: 'Unassigned Remainder' })).toHaveTextContent('+$0.01');
+  editWeight('0');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$0.00');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Casey' })).toHaveTextContent('$1.00');
+  editWeight('0', 'Fictional Casey');
+  expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('$0.00');
+  expect(screen.getByRole('group', { name: 'Unassigned Remainder' })).toHaveTextContent('+$1.00');
+});
+
+it.each(['', ' ', '-1', 'abc', '1e2', 'Infinity', 'NaN', '0.001', '1.000', '90071992547409.92'])('invalid selected temporary weight %j blocks the entire payout preview without fallback', async value => {
+  tables.employees.push({ ...employee(), id: id(7), name: 'Fictional Casey', default_weight_override: '50' });
+  render(panel()); await loaded(); choose(); choose('Fictional Casey');
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100' } });
+  editWeight(value);
+  expect(weightInput()).toHaveValue(value);
+  expect(weightInput()).toHaveAttribute('aria-invalid', 'true');
+  expect(weightInput()).toHaveAccessibleDescription(/Permanent default share weight: 100.*Weight/);
+  expect(screen.getAllByRole('alert').some(alert => /Correct the temporary share weight for Fictional Avery/.test(alert.textContent ?? ''))).toBe(true);
+  expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
+  expect(screen.getByRole('group', { name: 'Unassigned Remainder' })).toHaveTextContent('—');
+  expect(screen.queryByRole('group', { name: 'Employee Fictional Casey' })).not.toBeInTheDocument();
+  choose(); // Invalid but excluded: the valid selected employee can allocate.
+  expect(weightInput()).toHaveValue(value);
+  expect(screen.getByRole('group', { name: 'Employee Fictional Casey' })).toHaveTextContent('$100.00');
+  choose(); // Reselecting retains the invalid text and blocks payouts again.
+  expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
+  fireEvent.click(screen.getByRole('button', { name: 'Reset Fictional Avery to default' }));
+  expect(weightInput()).toHaveValue('100');
+  expect(weightInput()).toHaveAttribute('aria-invalid', 'false');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$66.66');
+});
+
+it('preserves editable exact maximum units and blocks overflow of the selected total', async () => {
+  tables.employees.push({ ...employee(), id: id(7), name: 'Fictional Casey', default_weight_override: '0' });
+  render(panel()); await loaded(); choose(); choose('Fictional Casey');
+  editWeight('90071992547409.91');
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100.01' } });
+  expect(weightInput()).toHaveValue('90071992547409.91');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('Share weight: 90071992547409.91');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$100.01');
+  editWeight('0.01', 'Fictional Casey');
+  expect(screen.getByRole('alert')).toHaveTextContent('Total weight units exceeds the safe integer range');
+  expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
+  choose('Fictional Casey');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  choose('Fictional Casey');
+  expect(weightInput('Fictional Casey')).toHaveValue('0.01');
+  expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
+});
+
+it('retains deselected temporary shares in this preview without including their payouts', async () => {
+  tables.employees.push({ ...employee(), id: id(7), name: 'Fictional Casey', default_weight_override: '100' });
+  render(panel()); await loaded(); choose(); choose('Fictional Casey');
+  editWeight('25');
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100' } });
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$20.00');
+  choose();
+  expect(weightInput()).toHaveValue('25'); expect(weightInput()).toBeDisabled();
+  expect(screen.queryByRole('group', { name: 'Employee Fictional Avery' })).not.toBeInTheDocument();
+  expect(screen.getByRole('group', { name: 'Employee Fictional Casey' })).toHaveTextContent('$100.00');
+  choose();
+  expect(weightInput()).toHaveValue('25');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$20.00');
+});
+
+it.each(['account', 'project', 'restaurant'])('clears temporary weights and selection when the %s scope changes', async kind => {
+  const view = render(panel()); await loaded(); choose(); editWeight('13.25');
+  let overrides = {};
+  if (kind === 'account') {
+    session = { ...session!, user: { ...session!.user, id: otherUser } };
+    tables.organization_memberships = [membership(org, otherUser)]; overrides = { userId: otherUser };
+  }
+  if (kind === 'project') overrides = { client: makeClient('https://other-fictional.example.test') };
+  if (kind === 'restaurant') {
+    tables.organization_memberships.push(membership(otherOrg)); tables.job_roles.push(role(otherOrg)); tables.employees.push(employee(otherOrg));
+    overrides = { organizationId: otherOrg, restaurantName: 'Fictional Moonbeam' };
+  }
+  view.rerender(panel(overrides)); await loaded();
+  expect(weightInput(kind === 'restaurant' ? 'Fictional Blair' : 'Fictional Avery')).toHaveValue('100');
+  expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
+});
+
+it.each(['sign-out', 'revocation'])('clears temporary weights after %s and requires fresh defaults when access returns', async kind => {
+  const ownSession = session;
+  const view = render(panel()); await loaded(); choose(); editWeight('13.25');
+  if (kind === 'sign-out') act(() => emit('SIGNED_OUT', null));
+  else { tables.organization_memberships = []; view.rerender(panel({ accessRevision: 1 })); }
+  await screen.findByRole('alert');
+  expect(screen.queryByRole('textbox', { name: /Temporary share weight/ })).not.toBeInTheDocument();
+  if (kind === 'sign-out') act(() => emit('SIGNED_IN', ownSession));
+  else { tables.organization_memberships = [membership()]; reload(); }
+  await loaded();
+  expect(weightInput()).toHaveValue('100');
+  expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
+});
+
+it('preserves invalid temporary text and unavailable payouts through successful access rechecks', async () => {
+  const view = render(panel()); await loaded(); choose(); editWeight('0.001');
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100' } });
+  view.rerender(panel({ accessRevision: 1 })); await loaded();
+  expect(weightInput()).toHaveValue('0.001');
+  expect(weightInput()).toHaveAttribute('aria-invalid', 'true');
+  expect(within(participating()).getByRole('checkbox')).toBeChecked();
+  expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
+  expect(exactReads()).toHaveLength(1);
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('100');
 });

@@ -30,12 +30,21 @@ Initial eligibility is conservative: **both employee and associated role must be
 active at explicit load time**. Inactive rows remain visible with a reason and
 cannot be selected. An active employee's explicit zero weight remains selectable.
 NULL inherits the role default; non-NULL (including zero) uses the employee default.
-This only resolves current roster defaults; no shift override precedence is defined.
+Selected employees may use a temporary per-calculation share weight instead of
+that loaded default. Inputs are exact decimal text in React memory, labelled as
+relative share weights (not tip percentages), with the permanent default beside
+them. Individual Reset restores the loaded default; this never writes to Supabase
+or localStorage. No saved-shift override precedence is defined.
 
 Successful routine access checks preserve the snapshot/selection/inputs. Shared
 edits, including activation changes, do not silently change a running preview.
-Explicit reload replaces the snapshot and clears selections; leaving shared mode,
-scope changes or failed verification clears it. No shift or payment is saved.
+Explicit reload replaces the snapshot, resets temporary weights to the latest
+verified defaults and clears selections. Leaving shared mode, scope changes,
+sign-out or failed verification clears temporary edits. Deselecting excludes an
+employee immediately; reselecting during the same preview retains their text.
+Invalid selected weights block all payout previews without a default/previous-value
+fallback; invalid unselected inputs do not affect allocation. No shift or payment
+is saved.
 
 **Owner decisions remain open:** approve the initial active-pair eligibility rule;
 decide whether future shifts may include retired employees/roles and how mid-preview

@@ -44,7 +44,7 @@ function loadRoster(storageKey: string): RosterState {
   }
 }
 
-type Props = { storageKey: string; shared?: { participants: CalculationParticipant[]; restaurantName: string; unavailable: boolean } };
+type Props = { storageKey: string; shared?: { participants: CalculationParticipant[]; restaurantName: string; unavailable: boolean; validationError?: string } };
 
 export default function Calculator({ storageKey, shared }: Props) {
   const [cashTip, setCashTip] = useState('');
@@ -54,7 +54,7 @@ export default function Calculator({ storageKey, shared }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const { employees } = roster;
 
-  const displayEmployees = shared ? (shared.unavailable ? [] : shared.participants) : employees.map(employee => ({ ...employee, weightText: String(employee.weight) }));
+  const displayEmployees = shared ? (shared.unavailable || shared.validationError ? [] : shared.participants) : employees.map(employee => ({ ...employee, weightText: String(employee.weight) }));
   const inputPrefix = shared ? 'shared-' : '';
 
   let totalTipCents: number | undefined;
@@ -62,6 +62,7 @@ export default function Calculator({ storageKey, shared }: Props) {
   let calculationError: string | undefined;
   try {
     totalTipCents = sumTipCents(parseTipInput(cashTip, 'Cash tips'), parseTipInput(creditTip, 'Credit tips'));
+    if (shared?.validationError) throw new Error(shared.validationError);
     if (!shared?.unavailable) calculation = distributeTips(totalTipCents, shared ? shared.participants : employees.map(employee => ({
       id: employee.id,
       weightUnits: parseWeightInput(String(employee.weight)),
@@ -206,14 +207,14 @@ export default function Calculator({ storageKey, shared }: Props) {
             <p className="text-sm text-gray-600 mb-3">{shared ? `Restaurant shared roster · ${shared.restaurantName}. Temporary preview only; no saved shift or payment.` : 'Browser-local roster. Saved only in this browser; not synchronized to Supabase. Use fictional data for DEV testing.'}</p>
             {!shared && roster.error && <p role="alert" className="text-sm text-red-700 mb-3">{roster.error}</p>}
             {displayEmployees.length === 0 ? (
-              <p className="text-gray-400 text-center py-8">{shared ? 'No participants selected.' : 'No employees added. Roster is empty.'}</p>
+              <p className="text-gray-400 text-center py-8">{shared ? (shared.validationError ? 'Correct the selected participants’ temporary share weights to preview payouts.' : 'No participants selected.') : 'No employees added. Roster is empty.'}</p>
             ) : (
               <div className="space-y-3">
                 {displayEmployees.map(emp => (
                   <div key={emp.id} role="group" aria-label={`Employee ${emp.name}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-gray-50 border border-gray-100 rounded">
                     <div className="min-w-0 break-words">
                       <p className="font-bold">{emp.name} <span className="text-xs text-gray-500 font-normal bg-gray-200 px-2 py-1 rounded ml-2">{emp.jobTitle}</span></p>
-                      <p className="text-sm text-gray-600 mt-1">Weight: {emp.weightText}</p>
+                      <p className="text-sm text-gray-600 mt-1">{shared ? 'Share weight' : 'Weight'}: {emp.weightText}</p>
                     </div>
                     <div className="flex items-center justify-between shrink-0 space-x-4">
                       <p className="font-mono font-bold text-lg text-blue-700">
