@@ -4,10 +4,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
-import type { Session, SupabaseClient } from '@supabase/supabase-js';
+import type { AuthChangeEvent, Session, SupabaseClient } from '@supabase/supabase-js';
 import ManageSharedRoster from './ManageSharedRoster';
 import Calculator from './Calculator';
 import SharedRoster from './SharedRoster';
+import AuthGate from './AuthGate';
+import { accountRosterKey } from './supabase';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const userId = id(1), org = id(2), foreign = id(3);
@@ -18,8 +20,8 @@ let tables: Record<Table, Row[]>;
 let client: SupabaseClient;
 let requests: { table: Table; url: URL; init: RequestInit }[];
 let intercept: (table: Table, url: URL, init: RequestInit) => Response | Promise<Response> | undefined;
-let emit: () => void;
-let auth: { getSession: ReturnType<typeof vi.fn>; getUser: ReturnType<typeof vi.fn>; onAuthStateChange: ReturnType<typeof vi.fn> };
+let emit: (event?: AuthChangeEvent, candidate?: Session | null) => void;
+let auth: { getSession: ReturnType<typeof vi.fn>; getUser: ReturnType<typeof vi.fn>; signOut: ReturnType<typeof vi.fn>; onAuthStateChange: ReturnType<typeof vi.fn> };
 function response(rows: unknown[], status = 200, count = rows.length) {
   return new Response(JSON.stringify(rows), { status, headers: { 'Content-Type': 'application/json', 'Content-Range': rows.length ? `0-${rows.length - 1}/${count}` : `*/${count}` } });
 }
@@ -67,11 +69,16 @@ beforeEach(() => {
       return await (intercept(table, url, init) ?? query(table, url, init));
     } },
   });
-  emit = () => {};
+  const listeners = new Set<(event: AuthChangeEvent, candidate: Session | null) => void>();
+  emit = (event = 'TOKEN_REFRESHED', candidate = session) => listeners.forEach(callback => callback(event, candidate));
   auth = {
     getSession: vi.fn(async () => ({ data: { session }, error: null })),
     getUser: vi.fn(async () => ({ data: { user: session.user }, error: null })),
-    onAuthStateChange: vi.fn(callback => { emit = callback; return { data: { subscription: { unsubscribe: vi.fn() } } }; }),
+    signOut: vi.fn(async () => ({ error: null })),
+    onAuthStateChange: vi.fn(callback => {
+      listeners.add(callback);
+      return { data: { subscription: { unsubscribe: () => listeners.delete(callback) } } };
+    }),
   };
   client = { from: sdk.from.bind(sdk), auth } as unknown as SupabaseClient;
   localStorage.clear();
@@ -79,7 +86,10 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); localStorage.clear(); });
 function manager() { return <ManageSharedRoster client={client} userId={userId} organizationId={org} onClose={() => {}} />; }
 const mutations = () => requests.filter(request => ['POST', 'PATCH'].includes(request.init.method ?? 'GET'));
-async function loaded() { return screen.findByRole('button', { name: 'Add shared job role' }); }
+async function loaded() {
+  await waitFor(() => expect(screen.queryByText('Verifying access and exact shared defaults…')).not.toBeInTheDocument());
+  return screen.findByRole('button', { name: 'Add shared job role' });
+}
 async function addRole(name = '  Fictional custom  ', weight = '90071992547409.91') {
   await userEvent.click(await loaded());
   await userEvent.type(screen.getByLabelText('Shared role name'), name);
@@ -346,14 +356,21 @@ it.each(['offline', 'tenant-switch'])('parent context aborts a pending mutation 
   expect(mutations()).toHaveLength(1);
 });
 
-it('expires drafts and refreshes versions after a minute', async () => {
+it('expires the write snapshot without losing input through several minutes of access checks', async () => {
   vi.useFakeTimers();
   render(manager());
   await act(async () => { await vi.advanceTimersByTimeAsync(1); });
   fireEvent.click(screen.getByRole('button', { name: 'Add shared job role' }));
   fireEvent.change(screen.getByLabelText('Shared role name'), { target: { value: 'Fictional unsent' } });
   await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
-  expect(screen.queryByRole('form')).not.toBeInTheDocument();
+  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional unsent');
+  expect(screen.getByRole('alert')).toHaveTextContent('snapshot expired');
+  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeDisabled();
+  const checked = auth.getUser.mock.calls.length;
+  await act(async () => { await vi.advanceTimersByTimeAsync(180_000); });
+  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional unsent');
+  expect(auth.getUser.mock.calls.length).toBeGreaterThan(checked);
+  fireEvent.submit(screen.getByRole('form'));
   expect(mutations()).toHaveLength(0);
 });
 
@@ -394,7 +411,7 @@ it.each(['reload', 'auth-refresh', 'unmount', 'parent-focus'])('retains uncertai
   if (kind === 'unmount') { view.unmount(); render(manager()); }
   if (kind === 'parent-focus') {
     fireEvent(window, new Event('focus'));
-    await userEvent.click(await screen.findByRole('button', { name: 'Manage shared roster · DEV' }));
+    expect(screen.getByRole('region', { name: 'Manage shared roster · DEV' })).toBeVisible();
   }
   await loaded();
   expect(request.init.signal?.aborted).toBe(true);
@@ -563,5 +580,273 @@ it('discards a cancelled inspection and requires a later verified inspection bef
   expect(screen.queryByRole('button', { name: 'I inspected the roster; allow new edits' })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeDisabled();
   await inspectAndAcknowledge('Fictional Avery · Active');
+  expect(mutations()).toHaveLength(1);
+});
+
+async function openDraft(kind: 'role' | 'employee', parent = false) {
+  render(parent ? <SharedRoster client={client} userId={userId} /> : manager());
+  await act(async () => {});
+  if (parent) {
+    fireEvent.click(screen.getByRole('button', { name: 'Manage shared roster · DEV' }));
+    await act(async () => {});
+  }
+  fireEvent.click(screen.getByRole('button', { name: kind === 'role' ? 'Add shared job role' : 'Add shared employee' }));
+  fireEvent.change(screen.getByLabelText(`Shared ${kind} name`), { target: { value: 'Fictional retained input' } });
+  fireEvent.change(screen.getByLabelText(kind === 'role' ? 'Default share weight' : 'Default share weight override (blank inherits role)'), { target: { value: '0.01' } });
+  if (kind === 'employee') fireEvent.change(screen.getByLabelText('Default shared job role'), { target: { value: id(4) } });
+}
+
+it.each(['role', 'employee'] as const)('keeps the parent %s editor open through four minutes, requiring explicit revalidation before a single save', async kind => {
+  vi.useFakeTimers();
+  await openDraft(kind, true);
+  const verified = auth.getUser.mock.calls.length;
+  const storage = vi.spyOn(Storage.prototype, 'setItem');
+  await act(async () => { await vi.advanceTimersByTimeAsync(240_000); });
+  expect(screen.getByRole('region', { name: 'Manage shared roster · DEV' })).toBeVisible();
+  expect(screen.getByLabelText(`Shared ${kind} name`)).toHaveValue('Fictional retained input');
+  expect(screen.getByRole('alert')).toHaveTextContent('snapshot expired');
+  expect(auth.getUser.mock.calls.length).toBeGreaterThan(verified);
+  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeDisabled();
+  fireEvent.submit(screen.getByRole('form'));
+  expect(mutations()).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Revalidate draft' }));
+  await act(async () => {});
+  expect(screen.getByLabelText(`Shared ${kind} name`)).toHaveValue('Fictional retained input');
+  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeEnabled();
+  const form = screen.getByRole('form');
+  act(() => { fireEvent.submit(form); fireEvent.submit(form); });
+  await act(async () => {});
+  expect(mutations()).toHaveLength(1);
+  expect(JSON.parse(String(mutations()[0].init.body))).toMatchObject({ name: 'Fictional retained input', [kind === 'role' ? 'default_weight' : 'default_weight_override']: '0.01' });
+  expect(screen.getByText('Save confirmed. Shared roster refreshed.')).toBeVisible();
+  expect(storage).not.toHaveBeenCalled();
+});
+
+it.each(['focus', 'visibility', 'manual-access-refresh'] as const)('preserves input and blocks only Save while %s rechecks access', async event => {
+  await openDraft('role', true);
+  const pending = deferred<Response>();
+  const captured = response(tables.organization_memberships);
+  intercept = table => table === 'organization_memberships' ? pending.promise : undefined;
+  if (event === 'focus') fireEvent(window, new Event('focus'));
+  if (event === 'visibility') fireEvent(document, new Event('visibilitychange'));
+  if (event === 'manual-access-refresh') fireEvent.click(screen.getByRole('button', { name: 'Refresh access / retry' }));
+  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional retained input');
+  expect(screen.getByLabelText('Shared role name')).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('Shared role name'), { target: { value: 'Fictional still typing' } });
+  fireEvent.submit(screen.getByRole('form'));
+  expect(mutations()).toHaveLength(0);
+  intercept = () => undefined;
+  await act(async () => pending.resolve(captured));
+  await loaded();
+  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional still typing');
+  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeEnabled();
+});
+
+it.each(['role', 'employee'] as const)('detects a changed %s on expired-draft revalidation and requires cancellation before using the current row', async kind => {
+  vi.useFakeTimers();
+  render(manager()); await act(async () => {});
+  fireEvent.click(screen.getByRole('button', { name: kind === 'role' ? 'Edit shared role Fictional server' : 'Edit shared employee Fictional Avery' }));
+  fireEvent.change(screen.getByLabelText(`Shared ${kind} name`), { target: { value: 'Fictional my unsaved edit' } });
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_001); });
+  const row = kind === 'role' ? tables.job_roles[0] : tables.employees[0];
+  row.xmin = '1200'; row.name = 'Fictional other operator';
+  fireEvent.click(screen.getByRole('button', { name: 'Revalidate draft' }));
+  await act(async () => {});
+  expect(screen.getByRole('alert')).toHaveTextContent('record changed');
+  expect(screen.getByLabelText(`Shared ${kind} name`)).toHaveValue('Fictional my unsaved edit');
+  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeDisabled();
+  fireEvent.submit(screen.getByRole('form'));
+  expect(mutations()).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel draft' }));
+  fireEvent.click(screen.getByRole('button', { name: `Edit shared ${kind === 'role' ? 'role' : 'employee'} Fictional other operator` }));
+  expect(screen.getByLabelText(`Shared ${kind} name`)).toHaveValue('Fictional other operator');
+  fireEvent.submit(screen.getByRole('form'));
+  await act(async () => {});
+  expect(mutations()).toHaveLength(1);
+  expect(mutations()[0].url.searchParams.get('xmin')).toBe('eq.1200');
+  expect(JSON.parse(String(mutations()[0].init.body)).name).toBe('Fictional other operator');
+});
+
+it.each(['changed-token', 'changed-value', 'removed-row'] as const)('background refresh detects %s without rebasing or losing the draft', async change => {
+  render(manager()); await loaded();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit shared employee Fictional Avery' }));
+  fireEvent.change(screen.getByLabelText('Shared employee name'), { target: { value: 'Fictional local draft' } });
+  if (change === 'changed-token') tables.employees[0].xmin = '999';
+  if (change === 'changed-value') tables.employees[0].name = 'Fictional changed value';
+  if (change === 'removed-row') tables.employees = [];
+  fireEvent(window, new Event('focus'));
+  await loaded();
+  expect(screen.getByRole('alert')).toHaveTextContent('record changed');
+  expect(screen.getByLabelText('Shared employee name')).toHaveValue('Fictional local draft');
+  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeDisabled();
+  fireEvent.submit(screen.getByRole('form'));
+  expect(mutations()).toHaveLength(0);
+});
+
+it('revalidates an unchanged update draft with fresh time bounds and retains xmin filtering', async () => {
+  vi.useFakeTimers();
+  render(manager()); await act(async () => {});
+  fireEvent.click(screen.getByRole('button', { name: 'Edit shared employee Fictional Avery' }));
+  fireEvent.change(screen.getByLabelText('Shared employee name'), { target: { value: 'Fictional revalidated update' } });
+  await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+  fireEvent.click(screen.getByRole('button', { name: 'Revalidate draft' }));
+  await act(async () => {});
+  fireEvent.submit(screen.getByRole('form'));
+  await act(async () => {});
+  expect(mutations()).toHaveLength(1);
+  expect(mutations()[0].url.searchParams.get('xmin')).toBe('eq.703');
+  expect(JSON.parse(String(mutations()[0].init.body))).toMatchObject({ name: 'Fictional revalidated update', default_weight_override: null });
+});
+
+it('preserves input if the snapshot expires during preflight verification before a timer can run', async () => {
+  await openDraft('role');
+  const identity = deferred<{ data: { user: Session['user'] }; error: null }>();
+  auth.getUser.mockReturnValueOnce(identity.promise);
+  const verified = auth.getUser.mock.calls.length;
+  fireEvent.submit(screen.getByRole('form'));
+  await waitFor(() => expect(auth.getUser.mock.calls.length).toBeGreaterThan(verified));
+  const resumedAt = Date.now() + 60_001;
+  vi.spyOn(Date, 'now').mockReturnValue(resumedAt);
+  await act(async () => identity.resolve({ data: { user: session.user }, error: null }));
+  expect(screen.getByRole('alert')).toHaveTextContent('snapshot expired');
+  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional retained input');
+  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeDisabled();
+  expect(mutations()).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Revalidate draft' }));
+  await loaded();
+  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeEnabled();
+});
+
+it.each(['periodic', 'focus', 'revalidate'] as const)('clears protected input after %s detects revoked access', async event => {
+  vi.useFakeTimers();
+  await openDraft('role', true);
+  tables.organization_memberships = [];
+  if (event === 'periodic') await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  if (event === 'focus') { fireEvent(window, new Event('focus')); await act(async () => {}); }
+  if (event === 'revalidate') { fireEvent.click(screen.getByRole('button', { name: 'Revalidate draft' })); await act(async () => {}); }
+  expect(screen.queryByRole('form')).not.toBeInTheDocument();
+  expect(screen.queryByText('Fictional server · Active')).not.toBeInTheDocument();
+  expect(screen.queryByDisplayValue('Fictional retained input')).not.toBeInTheDocument();
+  expect(mutations()).toHaveLength(0);
+});
+
+it.each(['SIGNED_IN', 'TOKEN_REFRESHED'] as const)('keeps editor and calculator drafts through verified same-user %s', async event => {
+  const storageKey = accountRosterKey('https://fictional.example.test', userId);
+  localStorage.setItem(storageKey, JSON.stringify([{ id: 'local', name: 'Fictional calculator', jobTitle: 'Local', weight: 100 }]));
+  render(<AuthGate runtime={{ mode: 'configured', project: 'https://fictional.example.test', client }} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Manage shared roster · DEV' }));
+  await loaded();
+  fireEvent.click(screen.getByRole('button', { name: 'Add shared job role' }));
+  fireEvent.change(screen.getByLabelText('Shared role name'), { target: { value: 'Fictional Auth draft' } });
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '50' } });
+  const verified = auth.getUser.mock.calls.length;
+  const refreshed = { ...session, access_token: 'fictional-refreshed' };
+  auth.getSession.mockResolvedValue({ data: { session: refreshed }, error: null });
+  act(() => emit(event, refreshed));
+  await loaded();
+  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional Auth draft');
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('50');
+  expect(localStorage.getItem(storageKey)).toContain('Fictional calculator');
+  expect(auth.getUser.mock.calls.length).toBeGreaterThan(verified);
+  expect(mutations()).toHaveLength(0);
+});
+
+it.each(['sign-out', 'account-switch'] as const)('hides drafts immediately on %s and ignores a delayed prior-account read', async event => {
+  await openDraft('employee');
+  const pending = deferred<Response>();
+  let captured: Response | undefined;
+  intercept = (table, url, init) => {
+    if (table === 'job_roles' && !captured) { captured = query(table, url, init); return pending.promise; }
+  };
+  fireEvent.click(screen.getByRole('button', { name: 'Revalidate draft' }));
+  await waitFor(() => expect(captured).toBeDefined());
+  // Even stale getSession mocks must not resurrect the invalidated old scope.
+  act(() => emit(event === 'sign-out' ? 'SIGNED_OUT' : 'SIGNED_IN', event === 'sign-out' ? null : { ...session, user: { ...session.user, id: id(99) } }));
+  expect(screen.queryByRole('form')).not.toBeInTheDocument();
+  expect(screen.queryByText('Fictional Avery · Active')).not.toBeInTheDocument();
+  const reads = requests.length;
+  fireEvent(window, new Event('focus'));
+  await act(async () => pending.resolve(captured!));
+  expect(requests).toHaveLength(reads);
+  expect(screen.queryByDisplayValue('Fictional retained input')).not.toBeInTheDocument();
+  expect(mutations()).toHaveLength(0);
+});
+
+it.each(['sign-out', 'account-switch'] as const)('hides an interrupted save warning on %s while retaining recovery for the returning original user', async event => {
+  const pending = deferred<Response>();
+  intercept = (_table, _url, init) => init.method === 'POST' ? pending.promise : undefined;
+  render(manager()); await loaded(); await submitEmployee();
+  const request = mutations()[0];
+  act(() => emit(event === 'sign-out' ? 'SIGNED_OUT' : 'SIGNED_IN', event === 'sign-out' ? null : { ...session, user: { ...session.user, id: id(99) } }));
+  expect(request.init.signal?.aborted).toBe(true);
+  expect(screen.queryByText(/Save could not be confirmed|earlier save is still settling/)).not.toBeInTheDocument();
+  expect(screen.queryByText('Fictional Avery · Active')).not.toBeInTheDocument();
+  await act(async () => pending.resolve(query(request.table, request.url, request.init)));
+  expect(screen.queryByText('Save confirmed. Shared roster refreshed.')).not.toBeInTheDocument();
+  expect(screen.queryByText('Save could not be confirmed', { exact: false })).not.toBeInTheDocument();
+  act(() => emit('SIGNED_IN', session));
+  await loaded();
+  expect(screen.getByRole('alert')).toHaveTextContent('Save could not be confirmed');
+  expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeDisabled();
+  await inspectAndAcknowledge();
+  expect(mutations()).toHaveLength(1);
+});
+
+it('does not carry input to another restaurant and keeps the automatically selected restaurant when another membership is added', async () => {
+  await openDraft('role', true);
+  tables.organizations.push({ id: foreign, name: 'Fictional restaurant B' });
+  tables.organization_memberships.push({ organization_id: foreign, user_id: userId, role: 'closer', is_active: true });
+  fireEvent(window, new Event('focus'));
+  await loaded();
+  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional retained input');
+  expect(screen.getByLabelText('Restaurant')).toHaveValue(org);
+  await userEvent.selectOptions(screen.getByLabelText('Restaurant'), foreign);
+  expect(screen.queryByRole('form')).not.toBeInTheDocument();
+  expect(await screen.findByText('No shared employees.')).toBeVisible();
+  expect(screen.queryByText('Fictional server · Active')).not.toBeInTheDocument();
+  expect(mutations()).toHaveLength(0);
+});
+
+it.each(['cancel', 'close', 'discard-reload'] as const)('discards input only when the user explicitly chooses %s', async action => {
+  await openDraft('role', true);
+  fireEvent.click(screen.getByRole('button', { name: action === 'cancel' ? 'Cancel draft' : action === 'close' ? 'Close management' : 'Reload management / discard draft' }));
+  if (action === 'close') fireEvent.click(await screen.findByRole('button', { name: 'Manage shared roster · DEV' }));
+  await loaded();
+  expect(screen.queryByRole('form')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Add shared job role' }));
+  expect(screen.getByLabelText('Shared role name')).toHaveValue('');
+  expect(mutations()).toHaveLength(0);
+});
+
+it('preserves recovery when a parent periodic check interrupts a save, without duplicate requests', async () => {
+  vi.useFakeTimers();
+  render(<SharedRoster client={client} userId={userId} />);
+  await act(async () => {});
+  fireEvent.click(screen.getByRole('button', { name: 'Manage shared roster · DEV' }));
+  await act(async () => {});
+  const pending = deferred<Response>();
+  intercept = (_table, _url, init) => init.method === 'POST' ? pending.promise : undefined;
+  fireEvent.click(screen.getByRole('button', { name: 'Add shared employee' }));
+  fireEvent.change(screen.getByLabelText('Shared employee name'), { target: { value: 'Fictional periodic save' } });
+  fireEvent.change(screen.getByLabelText('Default shared job role'), { target: { value: id(4) } });
+  const form = screen.getByRole('form');
+  act(() => { fireEvent.submit(form); fireEvent.submit(form); });
+  await act(async () => {});
+  expect(mutations()).toHaveLength(1);
+  const request = mutations()[0];
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  expect(request.init.signal?.aborted).toBe(true);
+  expect(screen.getByRole('region', { name: 'Manage shared roster · DEV' })).toBeVisible();
+  expect(screen.getByRole('alert')).toHaveTextContent('may have committed');
+  expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeDisabled();
+  await act(async () => pending.resolve(query(request.table, request.url, request.init)));
+  expect(screen.queryByText('Save confirmed. Shared roster refreshed.')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Inspect current roster' }));
+  await act(async () => {});
+  expect(screen.getByText('Fictional periodic save · Active')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'I inspected the roster; allow new edits' }));
+  expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeEnabled();
   expect(mutations()).toHaveLength(1);
 });

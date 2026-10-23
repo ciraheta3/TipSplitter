@@ -19,6 +19,9 @@ export class RosterEditError extends Error {
   readonly uncertain: boolean;
   constructor(message: string, reload = true, uncertain = false) { super(message); this.reload = reload; this.uncertain = uncertain; }
 }
+export class RosterSnapshotExpiredError extends RosterEditError {
+  constructor() { super('This editing snapshot expired. Revalidate the draft before saving.'); }
+}
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new RosterEditError(invalid);
   return value as Record<string, unknown>;
@@ -97,11 +100,15 @@ export async function loadEditingRoster(client: SupabaseClient, userId: string, 
   } catch (error) { throw error instanceof RosterEditError ? error : new RosterEditError(invalid); }
 }
 
-function fresh(snapshot: EditSnapshot) {
+export function editingSnapshotRemaining(snapshot: EditSnapshot) {
   // Wall time also covers browsers whose monotonic clock pauses during OS sleep.
   const elapsed = performance.now() - snapshot.loadedAt;
   const wallElapsed = Date.now() - snapshot.wallAt;
-  if (elapsed >= lifetime || elapsed < 0 || wallElapsed >= lifetime || wallElapsed < 0) throw new RosterEditError('This editing snapshot expired. Refresh the roster before saving.');
+  if (elapsed < 0 || wallElapsed < 0 || !Number.isFinite(elapsed) || !Number.isFinite(wallElapsed)) return 0;
+  return Math.max(0, lifetime - Math.max(elapsed, wallElapsed));
+}
+function fresh(snapshot: EditSnapshot) {
+  if (!editingSnapshotRemaining(snapshot)) throw new RosterSnapshotExpiredError();
 }
 
 export async function saveRosterDraft(client: SupabaseClient, userId: string, org: string, signal: AbortSignal, snapshot: EditSnapshot, draft: RosterDraft, id?: string, onDispatch?: () => void) {

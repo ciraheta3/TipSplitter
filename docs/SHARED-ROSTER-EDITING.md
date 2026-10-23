@@ -177,18 +177,32 @@ observed exactly one winner/one zero-row conflict for parallel operators, confir
 the committed winner by GET, and rejected sequential stale edits.
 
 `xmin` is a 32-bit transaction identifier, not a permanent global revision or audit
-ledger. Editing snapshots/drafts expire after one minute, are never persisted, and
-cannot be reused for offline queues, historical imports or long-lived sync. This
-short lifetime is the explicit constraint on transaction-ID reuse/wraparound; this
-design must be reviewed again before any persistent synchronization. The adapter
-also checks monotonic and wall elapsed time just before dispatch, covering browser
-clock behavior during OS sleep. There is no float/timestamp fallback
+ledger. Editing **snapshots** expire after one minute and cannot be reused for
+offline queues, historical imports or long-lived sync. Form input can remain in
+the same mounted account/restaurant editor for several minutes; it is not an
+unexpired write snapshot or a permanent revision. After expiry, **Revalidate
+draft** must obtain a new Auth/membership-verified snapshot. For an existing row,
+its original fields and xmin must still match the freshly read target. A changed
+or missing target shows a conflict and blocks Save: cancel the draft and open the
+current row to start again. There is no automatic rebase onto a changed record.
+Background reads do not renew the draft's write deadline. Only explicit successful
+revalidation of an unchanged target does so, preserving the typed fields.
+
+The adapter checks monotonic and wall elapsed time before preflight and again just
+before dispatch, covering browser timer throttling and OS sleep. A known preflight
+expiry can preserve input without dispatching a mutation. Writes always use a
+snapshot younger than one minute, including after revalidation; the original
+expired snapshot is retained only for comparison, never as a write filter.
+The short write lifetime constrains xmin reuse/wraparound; it does not turn xmin
+into a durable revision history. Review this again before persistent sync. There
+is no float/timestamp fallback
 if version transport is unsupported or malformed. System-column compatibility on
 the owner's supported stack remains part of Mac acceptance.
 
-A dispatched save may still commit after fetch is aborted. Reload, Auth refresh,
-expiry, focus and component unmount discard drafts/results but **do not clear the
-save lock or its uncertainty**. A small tab-memory record keeps only lifecycle
+A dispatched save may still commit after fetch is aborted. A refresh, Auth event,
+expiry or unmount **during saving** discards that attempt's form/results but
+**does not clear the save lock or its uncertainty**. This differs from preserving
+an unsaved form while no mutation is pending. A small tab-memory record keeps only lifecycle
 flags, keyed independently by SDK client/project, verified user and restaurant;
 no draft, roster row, name or token is retained in that record. Other scopes see
 neither its warning nor prior rows. Returning to the affected scope restores the
@@ -229,10 +243,14 @@ is claimed; those require a separately designed server idempotency mechanism.
 - Auth/session/user identity and active membership are checked before and after
   reads and writes. Each read is bounded to 1,000 rows with an exact count; missing
   counts, unknown roles, duplicates, foreign rows and invalid strings/versions fail.
-- Account/logout/tenant changes unmount the request scope. Auth events, including
-  refresh, immediately abort the current management generation and discard drafts.
-  Parent focus/visibility/offline/reconnect/refresh events and the one-minute timer
-  also discard drafts. Delayed results cannot restore old data or success messages.
+- Account/project/restaurant changes remount the request scope and discard its
+  protected data and draft. Sign-out or a different Auth identity clears them
+  immediately; old cached session/read results cannot restore the invalidated scope.
+  Same-user Auth events, periodic checks, focus, return-to-tab and access refresh
+  reverify identity/membership while preserving unsaved input in the same mounted
+  editor. Save is blocked while checking. Revoked/unverified access, malformed data
+  and network/offline failure clear protected rows/input with an explanatory state.
+  Delayed results cannot restore old data or success messages.
   Cancellation neither rolls back a committed request nor proves an in-flight
   statement stopped; scoped recovery flags survive these React lifecycle changes.
 - RLS uses database statement visibility. Revocation does not invalidate an issued
@@ -260,8 +278,23 @@ offline checks. The later diagnostics investigation's checks and component rerun
 are recorded above. Full CLI, hosted and manual browser acceptance remain pending.
 Current-head CI results and correction commits are recorded in the PR.
 
-- `npm run check`: original 153 frontend tests plus 41 exact-weight boundary tests
-  and 58 management/SDK/UI tests; 14 original offline provisioning groups; lint,
+- Current sustained-editing correction: `npm run check` passes **278 frontend
+  tests**, 14 offline provisioning groups, 41 offline integration-harness tests,
+  ESLint, TypeScript and production build. There are 26 new UI regressions (84
+  management/SDK/UI tests total), covering four-minute parent/editor stability,
+  periodic/focus/visibility/manual checks, expired/preflight-expired input,
+  unchanged-row revalidation, changed/missing rows, same-user Auth refresh,
+  sign-out/account/tenant isolation, revocation, explicit cancel/close/discard,
+  repeated Save and interrupted-save inspection/acknowledgment. The original save
+  recovery tests remain, with expiry and focus expectations updated to the new
+  draft-preservation contract. Fake timers replace real minute-long waits.
+- The smaller `check:roster-editing:components` gate passed every original stage
+  with the current adapter: real PostgreSQL 17, GoTrue v2.197.0 and PostgREST v16.4,
+  mock API roles, no Kong/CLI reset. No full Supabase stack was attempted for this
+  UI correction. `check:db` and hosted-preflight were not rerun locally; current
+  CI results belong in the PR. Hosted and native browser acceptance are unrun.
+- Initial feature evidence: original 153 frontend tests plus 41 weight boundary
+  tests and 58 management/SDK/UI tests; 14 original offline provisioning groups; lint,
   TypeScript and production build. Run filesystem-writing offline suites in a
   clean temporary source checkout, excluding owner ignored files, to protect the
   owner's independent `work/` artifacts. No owner fixture was read or modified.
@@ -293,6 +326,45 @@ offline/retry, revocation before/after save, late saves across reload/Auth/unmou
 tenant/offline changes, expired drafts, and browser-local calculator isolation.
 jsdom is not native Mac/browser rendering or mobile/screen-reader acceptance.
 
+### Refresh and draft lifecycle
+
+A parent **remount** destroys React state, including the management-open flag and
+form fields. Previously every parent refresh changed the child's key, and the
+manager's independent expiry reset also cleared its form. These two timers could
+close the editor at different points within the minute. Every Auth event added
+another reset; the outer verified Auth gate itself already preserved same-user
+refresh and remains unchanged.
+
+The request key now changes only with the client/account/requested restaurant.
+A background data refresh replaces a scoped, abortable read while keeping the
+authorized editor mounted. The selected automatic restaurant also stays selected
+if another membership appears; it is never silently replaced by another tenant.
+The parent still checks every minute and on focus/visibility/network events; a
+standalone manager has equivalent checks. The summary hides old rows while
+checking, while management keeps its same-scope unsaved input and blocks Save.
+
+A **draft** is the typed form input held only in React memory. Its **snapshot**
+contains the verified rows/version and the short write deadline; ordinary reads
+do not advance that draft's deadline. Snapshot expiry preserves the input with a
+warning and requires explicit revalidation. A **pending database mutation** is a
+save attempt that may already have been dispatched. Interrupting it aborts fetch
+and invokes the unchanged per-client/account/restaurant recovery record, because
+the database may still commit. No recovery action resubmits that payload.
+
+Cancel, reload/discard or Close deliberately clears input; choose Cancel before
+opening another record. Account/restaurant changes and failed access verification
+also clear it. Nothing saves shared drafts to browser storage, restores them after
+close/logout or transfers them to another scope. Calculator state/storage and
+financial rules remain independent.
+
+For browser acceptance, start the owner's existing configured preview with
+`npm run dev -- --host 127.0.0.1`. First check retention, expiry, revalidation and
+Cancel/Close without clicking Save; these checks need no new roster rows. Use an
+existing active role to open an employee form. Concurrent-change, revocation and
+interrupted-write checks require the owner's separately approved synthetic fixture
+and controls. The disposable CLI integration fixture is destroyed by its own suite
+and must not be used to hold useful browser-acceptance data.
+
 ## Owner-only future DEV acceptance worksheet — all pending
 
 This worksheet grants **no hosted authorization** to Codex and does not execute
@@ -310,6 +382,9 @@ only reviewed commit, versions, sanitized outcomes and limits publicly.
 | Activation and links | Inactive roles remain distinct and existing links survive. New assignments to inactive roles are disabled. Reactivation works; changing role retains the explicitly submitted override. |
 | Duplicate/FK/permissions and zero rows | Clear safe errors; no success on zero rows; no tenant/ID/timestamp/membership/delete writes. Do not run broad hosted mutation probes as part of this worksheet. |
 | Two independent operators editing the same row | First committed edit wins; stale save conflicts and requires reload. The next edit uses the newly loaded token. Repeat for active flags, names, role and weight. |
+| Unsaved form open for 3–4 minutes; focus/return to tab/access refresh | Management and fields remain open; access checks still occur. Save disables at snapshot expiry. Revalidate preserves input and enables Save only after verified fresh data; it never submits automatically. |
+| Record changes while a draft is open or expired | Fresh reads/revalidation flag the changed/missing target. Input remains visible, Save stays blocked. Cancel and reopen the current row before making a new edit; no automatic rebase. |
+| Same-user Auth refresh versus sign-out/account/restaurant change | A verified same-user refresh preserves unsaved input. A different scope or failed/revoked verification clears protected rows and fields. Cancel/Close deliberately clears input. |
 | Slow response, token refresh, logout, account/tenant change, focus/offline, minute expiry during saving | Drafts clear and late success cannot enter a new scope. Returning to the original scope retains the uncertainty warning and blocks writes, even after an early reload shows no new row. Wait for the client request to settle, explicitly inspect current rows, then acknowledge; no automatic mutation retry. Other scopes show no prior scope's warning/data. |
 | Acknowledged write followed by a failed refresh | UI says the save was confirmed and the refresh did not complete. Restoring connectivity/reloading alone does not enable another addition; successful explicit inspection and acknowledgment are required. Check failed/cancelled inspection cannot enable acknowledgment and repeated Save clicks create only one request. |
 | Calculator/storage, mobile and accessibility | Shared edits do not change account/legacy browser roster or payouts; $100 at 100:50 stays $66.66/$33.33 + $0.01, or $66/$33 + $1. Check keyboard labels, announced states and narrow layouts. |
