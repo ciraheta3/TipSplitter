@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process'
 import { readFileSync, readdirSync } from 'node:fs'
 import { randomUUID, randomBytes, createHmac } from 'node:crypto'
 import { rosterEditingGate } from '../supabase/integration/roster-editing.mjs'
+import { rosterDiagnostics } from './roster-editing-diagnostics.mjs'
 
 const suffix = randomUUID(), network = `roster-gate-${suffix}`
 const db = `roster-db-${suffix}`, auth = `roster-auth-${suffix}`, rest = `roster-rest-${suffix}`
@@ -24,6 +25,8 @@ const pause = () => new Promise(resolve => setTimeout(resolve, 500))
 const created = []
 let madeNetwork = false
 let stage = 'local Docker setup'
+const diagnostics = rosterDiagnostics()
+let runningGate = false
 function cleanup() {
   globalThis.fetch = nativeFetch
   let failed = false
@@ -101,9 +104,11 @@ try {
   const key = `${parts}.${createHmac('sha256', secret).update(parts).digest('base64url')}`
   stage = 'real Auth/PostgREST/SDK transport and concurrency assertions'
   console.log('Local component gate: PostgreSQL 17, GoTrue v2.197.0 and PostgREST v16.4; mock API roles, no Kong or CLI ledger.')
-  await rosterEditingGate({ credentials: () => ({ API_URL: restUrl, ANON_KEY: key }), sql })
+  runningGate = true
+  await rosterEditingGate({ credentials: () => ({ API_URL: restUrl, ANON_KEY: key }), sql, diagnostics })
   console.log('Local component gate passed; full Supabase CLI and managed-role checks remain separate.')
-} catch {
+} catch (error) {
+  if (runningGate) console.error(diagnostics.format(error))
   console.error(`Local component gate failed during ${stage} (SQLSTATE ${failureCode}); details withheld. No full-stack or hosted pass claimed.`)
   process.exitCode = 1
 } finally { cleanup() }

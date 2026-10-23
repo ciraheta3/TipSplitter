@@ -4,6 +4,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import { registerHooks } from 'node:module'
 import { credentials as localCredentials, sql as localSql } from '../../scripts/supabase-local.mjs'
+import { rosterDiagnostics } from '../../scripts/roster-editing-diagnostics.mjs'
 
 const roleProjection = 'id,organization_id,name,is_active,default_weight::text,updated_at,xmin::text'
 const employeeProjection = 'id,organization_id,name,is_active,default_role_id,default_weight_override::text,updated_at,xmin::text'
@@ -20,31 +21,54 @@ const one = result => {
 }
 const code = (result, expected) => assert.ok(result.error?.code === expected, 'expected database denial code; details withheld')
 
-export async function rosterEditingGate({ credentials = localCredentials, sql = localSql } = {}) {
+export async function rosterEditingGate({ credentials = localCredentials, sql = localSql, diagnostics = rosterDiagnostics() } = {}) {
+  diagnostics.stage('local-credentials')
   const config = credentials() // Guarded local CLI status, never environment keys.
   assert.match(config.API_URL, /^http:\/\/127\.0\.0\.1:\d+$/)
+  diagnostics.stage('fresh-fixture')
   same(sql('SELECT (SELECT count(*) FROM auth.users) + (SELECT count(*) FROM public.organizations);'), '0', 'fresh local fixture required')
   const organizations = [randomUUID(), randomUUID()]
   const authRequest = async (path, body, token) => {
-    const response = await fetch(`${config.API_URL}/auth/v1/${path}`, {
+    let response
+    try { response = await fetch(`${config.API_URL}/auth/v1/${path}`, {
       method: body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(15_000),
       headers: { apikey: config.ANON_KEY, 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
-    })
+    }) } catch (error) { diagnostics.failure('transport'); throw error }
+    if (response.status !== 200) diagnostics.failure('http-status', response.status)
     assert.ok(response.status === 200, 'local Auth request must succeed')
-    return response.json()
+    // Consume the body under the same stage/deadline. Parsing/stream errors
+    // remain private, including any vendor content embedded in SyntaxError.
+    let data
+    try { data = await response.json() } catch (error) {
+      if (!(error instanceof SyntaxError)) diagnostics.failure('response-read')
+      throw error
+    }
+    const valid = path === 'signup' ? typeof data?.user?.id === 'string'
+      : path === 'token?grant_type=password' ? typeof data?.user?.id === 'string'
+        && typeof data.access_token === 'string' && data.access_token.length > 0
+        && typeof data.refresh_token === 'string' && data.refresh_token.length > 0
+        : typeof data?.id === 'string'
+    if (!valid) diagnostics.failure('response-shape')
+    assert.ok(valid, 'local Auth response shape required; details withheld')
+    return data
   }
   const users = []
   for (let n = 0; n < 4; n++) {
     const email = `roster-gate-${randomUUID()}@example.test`
     const password = randomBytes(32).toString('base64url')
+    diagnostics.stage('auth-signup', n + 1)
     const signup = await authRequest('signup', { email, password })
+    diagnostics.stage('auth-password-signin', n + 1)
     const session = await authRequest('token?grant_type=password', { email, password })
+    diagnostics.stage('auth-user-verification', n + 1)
     const verified = await authRequest('user', undefined, session.access_token)
+    diagnostics.stage('auth-identity-match', n + 1)
     assert.ok(verified.id === session.user.id && verified.id === signup.user.id, 'real Auth identity must match')
     users.push({ id: verified.id, token: session.access_token, refresh: session.refresh_token })
   }
   // Only this disposable database's trusted setup; no Auth SQL writes/grant changes.
+  diagnostics.stage('membership-fixture')
   sql(`BEGIN;
     INSERT INTO public.organizations (id,name) VALUES (${q(organizations[0])},'Fictional editing gate A'),(${q(organizations[1])},'Fictional editing gate B');
     INSERT INTO public.organization_memberships (organization_id,user_id,role) VALUES
@@ -52,6 +76,7 @@ export async function rosterEditingGate({ credentials = localCredentials, sql = 
       (${q(organizations[0])},${q(users[1].id)},'closer'),
       (${q(organizations[1])},${q(users[2].id)},'admin');
     COMMIT;`)
+  diagnostics.stage('sdk-contexts')
   const wire = []
   function client(user) {
     return createClient(config.API_URL, config.ANON_KEY, {
@@ -81,6 +106,7 @@ export async function rosterEditingGate({ credentials = localCredentials, sql = 
   const roleRows = []
   const employeeRows = []
   console.log('Local gate: real Auth identities and active admin/closer/foreign/nonmember contexts verified.')
+  diagnostics.stage('exact-transport')
   for (const [index, weight] of ['0', '0.01', '1', '100.50', '90071992547409.91'].entries()) {
     const sdk = index % 2 ? closer : admin
     const role = one(await sdk.from('job_roles').insert({ organization_id: org, name: `Fictional gate role ${index}`, default_weight: weight, is_active: true }).select(roleProjection).retry(false))
@@ -100,6 +126,7 @@ export async function rosterEditingGate({ credentials = localCredentials, sql = 
   }
   assert.ok(wire.every(request => request.method === 'POST'), 'transport inserts explicitly initiated only once')
   console.log('Local gate: numeric ::text GET/INSERT returning, decimal string writes, NULL and explicit zero passed, including the maximum.')
+  diagnostics.stage('xmin-conflicts')
   for (const [table, projection, row, field] of [
     ['job_roles', roleProjection, roleRows[3], 'default_weight'],
     ['employees', employeeProjection, employeeRows[7], 'default_weight_override'],
@@ -126,6 +153,7 @@ export async function rosterEditingGate({ credentials = localCredentials, sql = 
     assert.ok(current.is_active, 'reactivation preserves associations')
   }
   console.log('Local gate: PATCH casts/NULL, xmin returning/filtering, stale zero-row conflicts and observed two-operator races passed.')
+  diagnostics.stage('invalid-weights')
   for (const value of ['-1', 'NaN', 'Infinity', '1.001', '1.000', '90071992547409.92', 'malformed']) {
     const before = snapshot()
     const role = await admin.from('job_roles').insert({ organization_id: org, name: 'Fictional invalid', default_weight: value }).select(roleProjection).retry(false)
@@ -144,6 +172,7 @@ export async function rosterEditingGate({ credentials = localCredentials, sql = 
     else { noError(result); same(result.data, [], 'RLS-hidden update is zero rows') }
     same(snapshot(), before, 'denied insert/update changes no rows')
   }
+  diagnostics.stage('authorization-denials')
   for (const [table, projection, row, body] of [
     ['job_roles', roleProjection, roleRows[0], { organization_id: org, name: 'Fictional denied', default_weight: '1.00' }],
     ['employees', employeeProjection, employeeRows[0], { organization_id: org, name: 'Fictional denied', default_role_id: roleRows[0].id, default_weight_override: null }],
@@ -160,6 +189,7 @@ export async function rosterEditingGate({ credentials = localCredentials, sql = 
     code(await admin.from(table).update({ organization_id: organizations[1] }).eq('organization_id', org).eq('id', row.id).select(projection).retry(false), '42501')
     same(snapshot(), before, 'tenant move denied')
   }
+  diagnostics.stage('tenant-constraints')
   const beforeDuplicate = snapshot()
   code(await admin.from('job_roles').insert({ organization_id: org, name: roleRows[0].name.toUpperCase(), default_weight: '1' }).select(roleProjection).retry(false), '23505')
   code(await closer.from('employees').insert({ organization_id: organizations[1], name: 'Fictional wrong role', default_role_id: roleRows[0].id }).select(employeeProjection).retry(false), '42501')
@@ -171,6 +201,7 @@ export async function rosterEditingGate({ credentials = localCredentials, sql = 
   // Exercise the actual TypeScript application adapter, including exact-count
   // handling, through real SDK Auth state and server-verification calls. Node 24
   // strips types; this scoped resolver only supplies local source extensions.
+  diagnostics.stage('application-adapter')
   const sourceRoot = new URL('../../src/', import.meta.url).href
   const hook = registerHooks({ resolve(specifier, context, next) {
     return next(specifier.startsWith('./') && context.parentURL?.startsWith(sourceRoot) && !/\.[a-z]+$/.test(specifier)
@@ -205,6 +236,7 @@ export async function rosterEditingGate({ credentials = localCredentials, sql = 
     else delete navigator.onLine
     actual.auth.stopAutoRefresh()
   }
+  diagnostics.stage('revoked-membership')
   for (const user of users.slice(0, 2)) {
     sql(`UPDATE public.organization_memberships SET is_active=false WHERE organization_id=${q(org)} AND user_id=${q(user.id)};`)
     const verified = await authRequest('user', undefined, user.token)

@@ -58,6 +58,90 @@ The separate `check:roster-editing` command runs the same feature suite with the
 existing guarded local Supabase CLI plumbing, audits and two clean migration replays.
 The original `check:supabase` security suite remains independent and unchanged.
 
+### Second-replay investigation (PR #39)
+
+The owner reports that Mac `check`, `check:db` and the component gate passed;
+the full editing gate completed replay 1 but failed after replay 2's audit and
+before its first Auth/fixture success message. **The exact failing operation and
+root cause are not established.** The old catch suppressed every exception, so
+that log interval cannot distinguish these operations:
+
+1. Guarded local CLI credential discovery and the empty Auth/organization fixture
+   assertion. The catalog/ledger audit does not assert fixture emptiness.
+2. Four sequential signup, password sign-in, `/user` verification and identity
+   comparisons, including HTTP status, JSON parsing and expected response shape.
+3. Trusted organization/membership fixture transaction and SDK client setup.
+
+The lifecycle remains: start once; reset, audit and run the entire gate twice;
+finally `stop --no-backup`, even on failure. Thus an empty `docker ps` afterward
+is consistent with deliberate cleanup and is not evidence of a container crash.
+The audit checks PostgreSQL catalogs/ledger and PostgREST configuration, not Auth
+HTTP readiness. The component gate starts its services fresh and runs once; it
+does not exercise CLI reset, Kong or second-replay service recovery.
+
+Ranked investigation priorities, **not confirmed causes**:
+
+1. An Auth/gateway request failing after reset: transport/readiness, timeout or
+   unexpected HTTP response, including throttling. Configured sign-in/signup
+   rate limit is 100; no 429 or other response has actually been observed.
+2. A nonempty fixture or credential/status failure after reset. A successful
+   migration/catalog audit alone does not exclude these.
+3. Auth response/identity mismatch, fixture SQL or SDK setup failure. Each gate
+   creates new fixture IDs, users, credentials and clients. The cached application
+   adapter runs later; its resolver and navigator override are restored, and its
+   Auth client disables persistence/automatic refresh. No deterministic application
+   defect or leaked prior-replay identity has been demonstrated.
+
+The change adds diagnostic context, **not a claimed fix for the Mac failure**.
+Failures now print `Local roster diagnostic:` followed by JSON with only a fixed
+stage/category, replay number (1/2; 0 before a replay), fixture ordinal (1–4;
+0 outside Auth setup) and optional HTTP status. Signup/sign-in/verification body
+shapes are checked at their own stage before proceeding. No exception messages,
+stacks, request/response bodies, headers, credentials or identities are printed.
+Later transport/conflict/authorization/adapter/revocation stages and cleanup are
+also distinguished. Cleanup failures cannot erase the original diagnostic.
+There is no new wait, automatic retry, assertion bypass or security/schema change.
+
+Offline regression coverage is included in `npm test` and can run separately with
+`npm run check:roster-editing:offline`. It injects local actions/SQL/fetch and
+simulates failures; it is not real Auth/reset evidence. Full CLI startup is not
+attempted in Cloud because of the established resource limitation. Current run
+results (Node 24.19.0 / npm 11.9.0, Linux):
+
+- `npm run check` passed: 252 frontend tests, 14 provisioning groups, **24 new
+  offline diagnostic tests**, ESLint, TypeScript and production build. Filesystem
+  tests ran in a clean temporary source copy, excluding owner ignored files.
+- `check:roster-editing:components` initially failed at PostgreSQL readiness,
+  before Auth/assertions. A separate disposable PostgreSQL SQL-readiness probe
+  passed; one fresh component rerun then passed all stages with PostgreSQL 17,
+  GoTrue v2.197.0 and PostgREST v16.4. Cleanup completed. The initial Cloud failure
+  is unexplained and is not evidence about the Mac's second replay.
+- Diff checks passed. `check:db` and `check:supabase` were not rerun for this
+  diagnostics change. Baseline CI check/database jobs passed at `acd8966` but do
+  not run the full editing gate. No full CLI or hosted pass is claimed.
+
+From the owner's existing clean, **unlinked PR #39 worktree**, in host Mac Terminal
+with Node 24, Docker Desktop/default local socket and free ports 54320–54322:
+
+```bash
+git switch issue-38-shared-roster
+git pull --ff-only origin issue-38-shared-roster
+git rev-parse HEAD
+node --version
+npm ci
+npm run check
+npm run check:roster-editing
+```
+
+Run serially, with no other use of the dedicated disposable
+`tip-calculator-integration` local project: both resets and final cleanup destroy
+its synthetic data. A pass must include **both complete clean replays**, not just
+two audits. If it fails, retain the sanitized diagnostic line and neighboring
+fixed progress messages plus the tested SHA; do not publish CLI debug/status,
+container environments or Auth logs. Use that evidence before considering a
+bounded readiness correction. Full local Supabase acceptance remains pending
+until the owner completes this run; hosted/browser acceptance remains separate.
+
 ## Concurrent edits and bounded snapshots
 
 `updated_at` remains display metadata, not a unique version. A local diagnostic
@@ -152,9 +236,10 @@ is claimed; those require a separately designed server idempotency mechanism.
 
 Node 24.19.0 / npm 11.9.0, Linux. Final results are recorded in the PR.
 The SQL/component/full-CLI results below are historical evidence from the initial
-implementation, not reruns of the save-lifecycle correction. The focused correction
-runs offline checks; Docker, real Supabase, hosted and manual browser tests are not
-rerun. Current-head CI results and the correction commit are recorded in the PR.
+implementation, not reruns of the save-lifecycle correction. That correction ran
+offline checks. The later diagnostics investigation's checks and component rerun
+are recorded above. Full CLI, hosted and manual browser acceptance remain pending.
+Current-head CI results and correction commits are recorded in the PR.
 
 - `npm run check`: original 153 frontend tests plus 41 exact-weight boundary tests
   and 58 management/SDK/UI tests; 14 original offline provisioning groups; lint,
