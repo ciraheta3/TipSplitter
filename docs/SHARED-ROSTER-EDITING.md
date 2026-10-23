@@ -253,6 +253,15 @@ is claimed; those require a separately designed server idempotency mechanism.
   Delayed results cannot restore old data or success messages.
   Cancellation neither rolls back a committed request nor proves an in-flight
   statement stopped; scoped recovery flags survive these React lifecycle changes.
+- A selected-roster failure clears that roster and unmounts management, discarding
+  its draft. Only restaurant options freshly verified by that same request remain
+  selectable, so an oversized or persistently failing restaurant does not prevent
+  switching to another authorized restaurant. Initial organization/membership
+  verification failures, including a failed post-roster membership recheck, clear
+  the options too; previously cached options are never a fallback. Retry retains
+  the selected restaurant while rechecking access. Neither a successful retry nor
+  switching away and back clears an interrupted save's inspection/acknowledgment
+  requirement, and no write is automatically repeated.
 - RLS uses database statement visibility. Revocation does not invalidate an issued
   JWT; an already displayed snapshot clears on the next refresh/event/timer, and
   mutation-time checks/RLS deny subsequent unauthorized writes. No instantaneous
@@ -278,7 +287,18 @@ offline checks. The later diagnostics investigation's checks and component rerun
 are recorded above. Full CLI, hosted and manual browser acceptance remain pending.
 Current-head CI results and correction commits are recorded in the PR.
 
-- Current sustained-editing correction: `npm run check` passes **278 frontend
+- Current restaurant-selector recovery correction: `npm run check` passes **291
+  frontend tests**, 14 offline provisioning groups, 41 offline integration-harness
+  tests, ESLint, TypeScript and production build. Both focused React suites pass
+  **128 tests**, including 13 new regressions: repeated server/oversized roster
+  failures and switching to B, initial/post-read access-verification failures,
+  logout/account changes, delayed failures after tenant switching, draft clearing
+  and a late-committing save whose recovery lock survives failure/switch/retry.
+  Five targeted regressions fail against the original `ff9e8ad` implementation.
+  Existing successful-refresh/draft-expiry/revalidation tests also pass. No
+  database, service-component or full Supabase stack checks were rerun for this
+  frontend-only correction; prior Mac/component evidence remains historical.
+- Prior sustained-editing correction (`ff9e8ad`): `npm run check` passed **278 frontend
   tests**, 14 offline provisioning groups, 41 offline integration-harness tests,
   ESLint, TypeScript and production build. There are 26 new UI regressions (84
   management/SDK/UI tests total), covering four-minute parent/editor stability,
@@ -291,7 +311,7 @@ Current-head CI results and correction commits are recorded in the PR.
 - The smaller `check:roster-editing:components` gate passed every original stage
   with the current adapter: real PostgreSQL 17, GoTrue v2.197.0 and PostgREST v16.4,
   mock API roles, no Kong/CLI reset. No full Supabase stack was attempted for this
-  UI correction. `check:db` and hosted-preflight were not rerun locally; current
+  prior UI correction. `check:db` and hosted-preflight were not rerun locally; current
   CI results belong in the PR. Hosted and native browser acceptance are unrun.
 - Initial feature evidence: original 153 frontend tests plus 41 weight boundary
   tests and 58 management/SDK/UI tests; 14 original offline provisioning groups; lint,
@@ -385,6 +405,7 @@ only reviewed commit, versions, sanitized outcomes and limits publicly.
 | Unsaved form open for 3–4 minutes; focus/return to tab/access refresh | Management and fields remain open; access checks still occur. Save disables at snapshot expiry. Revalidate preserves input and enables Save only after verified fresh data; it never submits automatically. |
 | Record changes while a draft is open or expired | Fresh reads/revalidation flag the changed/missing target. Input remains visible, Save stays blocked. Cancel and reopen the current row before making a new edit; no automatic rebase. |
 | Same-user Auth refresh versus sign-out/account/restaurant change | A verified same-user refresh preserves unsaved input. A different scope or failed/revoked verification clears protected rows and fields. Cancel/Close deliberately clears input. |
+| Authorized for fictional A and B; A's summary fails or exceeds 1,000 rows | A's rows and draft disappear; freshly verified restaurant options remain. Repeated retry does not trap the user in A: B can be selected and loaded. Failed membership verification removes the options as well. A delayed failure cannot replace B or restore A's form. Returning to an interrupted-save scope still requires explicit inspection and acknowledgment. |
 | Slow response, token refresh, logout, account/tenant change, focus/offline, minute expiry during saving | Drafts clear and late success cannot enter a new scope. Returning to the original scope retains the uncertainty warning and blocks writes, even after an early reload shows no new row. Wait for the client request to settle, explicitly inspect current rows, then acknowledge; no automatic mutation retry. Other scopes show no prior scope's warning/data. |
 | Acknowledged write followed by a failed refresh | UI says the save was confirmed and the refresh did not complete. Restoring connectivity/reloading alone does not enable another addition; successful explicit inspection and acknowledgment are required. Check failed/cancelled inspection cannot enable acknowledgment and repeated Save clicks create only one request. |
 | Calculator/storage, mobile and accessibility | Shared edits do not change account/legacy browser roster or payouts; $100 at 100:50 stays $66.66/$33.33 + $0.01, or $66/$33 + $1. Check keyboard labels, announced states and narrow layouts. |

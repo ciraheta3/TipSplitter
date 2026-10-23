@@ -850,3 +850,96 @@ it('preserves recovery when a parent periodic check interrupts a save, without d
   expect(screen.getByRole('button', { name: 'Add shared employee' })).toBeEnabled();
   expect(mutations()).toHaveLength(1);
 });
+
+it.each(['role', 'employee'] as const)('clears the %s draft on a roster-only failure, retaining only freshly verified restaurant options', async kind => {
+  await openDraft(kind, true);
+  tables.organizations.push({ id: foreign, name: 'Fictional freshly verified B' });
+  tables.organization_memberships.push({ organization_id: foreign, user_id: userId, role: 'closer', is_active: true });
+  // The manager's exact-default read succeeds; only the parent's summary fails.
+  intercept = (table, url) => table === 'employees' && !url.searchParams.get('select')!.includes('::text')
+    ? response([], 200, 1001) : undefined;
+  fireEvent(window, new Event('focus'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Management was closed and any unsaved draft was cleared');
+  expect(screen.getByLabelText('Restaurant')).toHaveValue(org);
+  expect(screen.getByRole('option', { name: 'Fictional freshly verified B' })).toBeVisible();
+  expect(screen.queryByRole('region', { name: 'Manage shared roster · DEV' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('form')).not.toBeInTheDocument();
+  expect(screen.queryByText('Fictional Avery · Active')).not.toBeInTheDocument();
+  intercept = () => undefined;
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh access / retry' }));
+  await loaded();
+  expect(screen.queryByRole('form')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: kind === 'role' ? 'Add shared job role' : 'Add shared employee' }));
+  expect(screen.getByLabelText(`Shared ${kind} name`)).toHaveValue('');
+  expect(mutations()).toHaveLength(0);
+});
+
+it('ignores a delayed failed roster request after switching restaurants without restoring the old form', async () => {
+  await openDraft('role', true);
+  tables.organizations.push({ id: foreign, name: 'Fictional restaurant B' });
+  tables.organization_memberships.push({ organization_id: foreign, user_id: userId, role: 'closer', is_active: true });
+  const late = deferred<Response>();
+  let oldSignal: AbortSignal | null | undefined;
+  intercept = (table, url, init) => {
+    if (table === 'employees' && url.searchParams.get('organization_id') === `eq.${org}` && !url.searchParams.get('select')!.includes('::text')) {
+      oldSignal = init.signal;
+      return late.promise;
+    }
+  };
+  fireEvent(window, new Event('focus'));
+  await screen.findByLabelText('Restaurant');
+  await waitFor(() => expect(oldSignal).toBeDefined());
+  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional retained input');
+  await userEvent.selectOptions(screen.getByLabelText('Restaurant'), foreign);
+  expect(oldSignal?.aborted).toBe(true);
+  expect(await screen.findByText('No shared employees.')).toBeVisible();
+  await act(async () => late.resolve(response([], 500)));
+  expect(screen.getByLabelText('Restaurant')).toHaveValue(foreign);
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.queryByRole('form')).not.toBeInTheDocument();
+  expect(screen.queryByText('Fictional server · Active')).not.toBeInTheDocument();
+  intercept = () => undefined;
+  await userEvent.selectOptions(screen.getByLabelText('Restaurant'), org);
+  fireEvent.click(await screen.findByRole('button', { name: 'Manage shared roster · DEV' }));
+  fireEvent.click(await loaded());
+  expect(screen.getByLabelText('Shared role name')).toHaveValue('');
+  expect(mutations()).toHaveLength(0);
+});
+
+it('retains the interrupted-save lock after a roster-only failure and tenant switch until explicit inspection and acknowledgment', async () => {
+  await openDraft('employee', true);
+  const pending = deferred<Response>();
+  intercept = (_table, _url, init) => init.method === 'POST' ? pending.promise : undefined;
+  const form = screen.getByRole('form');
+  act(() => { fireEvent.submit(form); fireEvent.submit(form); });
+  await waitFor(() => expect(mutations()).toHaveLength(1));
+  const request = mutations()[0];
+  tables.organizations.push({ id: foreign, name: 'Fictional restaurant B' });
+  tables.organization_memberships.push({ organization_id: foreign, user_id: userId, role: 'closer', is_active: true });
+  intercept = (table, url, init) => {
+    if (init.method === 'POST') return pending.promise;
+    if (table === 'employees' && url.searchParams.get('organization_id') === `eq.${org}` && !url.searchParams.get('select')!.includes('::text')) return response([], 500);
+  };
+  fireEvent(window, new Event('focus'));
+  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Management was closed'));
+  expect(request.init.signal?.aborted).toBe(true);
+  expect(screen.queryByRole('form')).not.toBeInTheDocument();
+  await userEvent.selectOptions(screen.getByLabelText('Restaurant'), foreign);
+  fireEvent.click(await screen.findByRole('button', { name: 'Manage shared roster · DEV' }));
+  expect(await loaded()).toBeEnabled();
+  expect(screen.queryByText(/may have committed/)).not.toBeInTheDocument();
+  // Simulate the server committing after the new restaurant's read completed.
+  await act(async () => pending.resolve(query(request.table, request.url, request.init)));
+  expect(screen.queryByText('Fictional retained input · Active')).not.toBeInTheDocument();
+  expect(screen.queryByText('Save confirmed. Shared roster refreshed.')).not.toBeInTheDocument();
+  await userEvent.selectOptions(screen.getByLabelText('Restaurant'), org);
+  expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load shared data');
+  intercept = () => undefined;
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh access / retry' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Manage shared roster · DEV' }));
+  expect(await screen.findByText(/may have committed/)).toBeVisible();
+  expect(await loaded()).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'I inspected the roster; allow new edits' })).not.toBeInTheDocument();
+  await inspectAndAcknowledge('Fictional retained input · Active');
+  expect(mutations()).toHaveLength(1);
+});

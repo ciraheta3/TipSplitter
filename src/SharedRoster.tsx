@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { accessChanged, readOrganizations, readSharedRoster, SharedRosterError } from './sharedRosterData';
+import { accessChanged, readOrganizations, readSharedRoster, SharedRosterAccessError, SharedRosterError } from './sharedRosterData';
 import type { Organization, SharedRosterData } from './sharedRosterData';
 import ManageSharedRoster from './ManageSharedRoster';
 import { rosterSaveScope } from './sharedRosterSaveScope';
@@ -72,8 +72,18 @@ function RosterRequest({ client, userId, selection, onSelect, revision }: Props 
         // Keep the same authorized management subtree mounted during a check.
         // Summary rows remain hidden while loading. Failure still clears data.
         setState(previous => ({ organizations, selected, loading: true, roster: previous.roster, revision }));
-        const roster = await readSharedRoster(client, userId, selected, controller.signal);
-        if (current) setState({ organizations, selected, loading: false, roster, revision });
+        try {
+          const roster = await readSharedRoster(client, userId, selected, controller.signal);
+          if (current) setState({ organizations, selected, loading: false, roster, revision });
+        } catch (error) {
+          // Membership verification failures still reach the fail-closed handler.
+          // Only roster failures retain this request's freshly verified options,
+          // never the failed roster or its management subtree/draft.
+          if (error instanceof SharedRosterAccessError) throw error;
+          if (current) setState({ organizations, selected, loading: false, revision,
+            error: error instanceof SharedRosterError
+              ? error.message : 'Unable to load shared data. Check your connection and retry.' });
+        }
       } catch (error) {
         if (current) {
           setState({ organizations: [], selected: '', loading: false, revision,
