@@ -3,10 +3,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { accessChanged, readOrganizations, readSharedRoster, SharedRosterAccessError, SharedRosterError } from './sharedRosterData';
 import type { Organization, SharedRosterData } from './sharedRosterData';
 import ManageSharedRoster from './ManageSharedRoster';
+import SharedCalculation from './SharedCalculation';
 import { rosterSaveScope } from './sharedRosterSaveScope';
 
 const buttonClass = 'rounded border border-blue-700 text-blue-800 px-4 py-2 disabled:opacity-50';
-type Props = { client: SupabaseClient; userId: string };
+type Props = { client: SupabaseClient; userId: string; calculationMode?: boolean };
 type State = {
   organizations: Organization[];
   selected: string;
@@ -17,7 +18,7 @@ type State = {
 };
 
 // Mounted only below the verified Auth gate and keyed there by project/account.
-export default function SharedRoster({ client, userId }: Props) {
+export default function SharedRoster({ client, userId, calculationMode = false }: Props) {
   const [selection, setSelection] = useState('');
   const [revision, setRevision] = useState(0);
   const refresh = () => setRevision(value => value + 1);
@@ -39,14 +40,14 @@ export default function SharedRoster({ client, userId }: Props) {
   }, []);
   return <section aria-labelledby="shared-roster-title" className="max-w-6xl mx-auto my-6 p-4 sm:p-6 bg-white border rounded-xl space-y-4">
     <h2 id="shared-roster-title" className="text-xl font-bold">Shared roster · DEV</h2>
-    <p className="text-sm text-gray-700">Shared restaurant records are separate from your browser-local calculator roster. Neither roster is synchronized; shared rows never affect payouts.</p>
+    <p className="text-sm text-gray-700">Shared restaurant records are separate from your browser-local calculator roster. Neither roster is synchronized. Choose Restaurant shared roster above to calculate a temporary preview from shared defaults.</p>
     <p className="text-sm text-gray-600">Open management to inspect exact default share weights. The summary shows names and status.</p>
     <button className={buttonClass} onClick={refresh}>Refresh access / retry</button>
-    <RosterRequest key={rosterSaveScope(client, userId, selection).id} client={client} userId={userId} selection={selection} onSelect={setSelection} revision={revision} />
+    <RosterRequest key={rosterSaveScope(client, userId, selection).id} client={client} userId={userId} calculationMode={calculationMode} selection={selection} onSelect={setSelection} revision={revision} />
   </section>;
 }
 
-function RosterRequest({ client, userId, selection, onSelect, revision }: Props & { selection: string; onSelect: (id: string) => void; revision: number }) {
+function RosterRequest({ client, userId, calculationMode, selection, onSelect, revision }: Props & { selection: string; onSelect: (id: string) => void; revision: number }) {
   const [state, setState] = useState<State>({ organizations: [], selected: '', loading: true });
   const [manage, setManage] = useState(false);
   const [reload, setReload] = useState(0);
@@ -114,7 +115,8 @@ function RosterRequest({ client, userId, selection, onSelect, revision }: Props 
       <p>Contact the project owner for access. You can continue using the browser-local calculator.</p>
       {manage && <p>Management was closed and any unsaved draft was cleared because restaurant access changed.</p>}
     </div>}
-    {roster && manage ? <ManageSharedRoster client={client} userId={userId} organizationId={state.selected} refreshRevision={revision} onClose={() => {
+    {calculationMode && roster && <SharedCalculation client={client} userId={userId} organizationId={state.selected} restaurantName={state.organizations.find(org => org.id === state.selected)!.name} accessRevision={revision} accessPending={loading} />}
+    {!calculationMode && (roster && manage ? <ManageSharedRoster client={client} userId={userId} organizationId={state.selected} refreshRevision={revision} onClose={() => {
       setManage(false);
       setState({ organizations: [], selected: '', loading: true });
       setReload(value => value + 1);
@@ -136,6 +138,6 @@ function RosterRequest({ client, userId, selection, onSelect, revision }: Props 
           </ul>}
         </div>
       </div>
-    </>}
+    </>)}
   </div>;
 }

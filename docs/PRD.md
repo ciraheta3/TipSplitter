@@ -1,11 +1,11 @@
 # Restaurant Tip Pool Manager
 
-## Proposed shared default management (Issue #38 feature branch)
+## Shared default management (merged PR #39)
 
 The [scoped editing design](SHARED-ROSTER-EDITING.md) implements the approved admin/
 closer V1 roster permissions under existing RLS/column ACLs, with exact decimal
-text/string transport and bounded xmin conflict checks. It remains proposed,
-unmerged and undeployed. No shifts, payout inputs, synchronization, import or
+text/string transport and bounded xmin conflict checks. PR #39 is merged.
+No shifts, payout inputs, synchronization, import or
 historical facts are created by shared default edits.
 
 Interim UI decisions: new employee assignments require an active same-restaurant
@@ -17,6 +17,31 @@ an open product/security decision; the current rule is a conservative UI check.
 One-minute drafts and transaction tokens are not a durable offline/sync protocol.
 Independent Mac/full-stack and owner-only DEV acceptance remain pending and separate
 from Issue #36. No hosted fixture or private owner work was accessed.
+
+## Shared-roster calculator V1 (Issue #42, this branch)
+
+The [read-only bridge](SHARED-ROSTER-CALCULATOR.md) offers explicit browser-local
+and restaurant-shared calculation sources. Reuse the authorized restaurant selector;
+display the restaurant throughout selection and preview. Shared rows never overwrite,
+merge into or persist in the local roster. A snapshot starts with no participants;
+checkboxes affect only this temporary preview, never employee activation/defaults.
+
+Initial eligibility is conservative: **both employee and associated role must be
+active at explicit load time**. Inactive rows remain visible with a reason and
+cannot be selected. An active employee's explicit zero weight remains selectable.
+NULL inherits the role default; non-NULL (including zero) uses the employee default.
+This only resolves current roster defaults; no shift override precedence is defined.
+
+Successful routine access checks preserve the snapshot/selection/inputs. Shared
+edits, including activation changes, do not silently change a running preview.
+Explicit reload replaces the snapshot and clears selections; leaving shared mode,
+scope changes or failed verification clears it. No shift or payment is saved.
+
+**Owner decisions remain open:** approve the initial active-pair eligibility rule;
+decide whether future shifts may include retired employees/roles and how mid-preview
+activation/default changes should be handled in a saved-shift product. Shift
+participation across lunch/dinner, overrides, adjustments, leftover recipients,
+finalization and actual payments are unchanged unresolved decisions.
 
 ## Product direction
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Distribution } from './calculation';
+import type { CalculationParticipant } from './sharedCalculationData';
 import {
   distributeTips,
   formatCents,
@@ -43,20 +44,25 @@ function loadRoster(storageKey: string): RosterState {
   }
 }
 
-export default function Calculator({ storageKey }: { storageKey: string }) {
+type Props = { storageKey: string; shared?: { participants: CalculationParticipant[]; restaurantName: string; unavailable: boolean } };
+
+export default function Calculator({ storageKey, shared }: Props) {
   const [cashTip, setCashTip] = useState('');
   const [creditTip, setCreditTip] = useState('');
   const [roundToDollar, setRoundToDollar] = useState(false);
-  const [roster, setRoster] = useState<RosterState>(() => loadRoster(storageKey));
+  const [roster, setRoster] = useState<RosterState>(() => shared ? { employees: [], error: null } : loadRoster(storageKey));
   const [formError, setFormError] = useState<string | null>(null);
   const { employees } = roster;
+
+  const displayEmployees = shared ? (shared.unavailable ? [] : shared.participants) : employees.map(employee => ({ ...employee, weightText: String(employee.weight) }));
+  const inputPrefix = shared ? 'shared-' : '';
 
   let totalTipCents: number | undefined;
   let calculation: Distribution | undefined;
   let calculationError: string | undefined;
   try {
     totalTipCents = sumTipCents(parseTipInput(cashTip, 'Cash tips'), parseTipInput(creditTip, 'Credit tips'));
-    calculation = distributeTips(totalTipCents, employees.map(employee => ({
+    if (!shared?.unavailable) calculation = distributeTips(totalTipCents, shared ? shared.participants : employees.map(employee => ({
       id: employee.id,
       weightUnits: parseWeightInput(String(employee.weight)),
     })), roundToDollar ? 'whole-dollar' : 'exact-cent');
@@ -102,7 +108,7 @@ export default function Calculator({ storageKey }: { storageKey: string }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 p-4 md:p-8 font-sans">
+    <div hidden={shared?.unavailable} className="min-h-screen bg-gray-50 text-gray-900 p-4 md:p-8 font-sans">
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* Verification Dashboard */}
@@ -140,7 +146,7 @@ export default function Calculator({ storageKey }: { storageKey: string }) {
           </div>
           <p className="text-sm text-gray-600 mt-4">Preview only. Remainder = collected tips − allocated tips. Positive means unassigned; negative means overpaid. Leftover handling is separate.</p>
           {calculation?.status === 'no-positive-weight' && (
-            <p role="status" className="text-sm text-gray-700 mt-2">Add an employee with positive weight to allocate tips. The entire pool remains unassigned.</p>
+            <p role="status" className="text-sm text-gray-700 mt-2">{shared ? 'Select a participant with positive weight to allocate tips.' : 'Add an employee with positive weight to allocate tips.'} The entire pool remains unassigned.</p>
           )}
           {calculationError && <p role="alert" className="text-sm text-red-700 mt-2">{calculationError} Payouts are unavailable until corrected.</p>}
         </div>
@@ -152,9 +158,9 @@ export default function Calculator({ storageKey }: { storageKey: string }) {
               <h2 className="text-lg font-bold mb-4">Tip Pool</h2>
               <div className="space-y-4">
                 <div>
-                  <label htmlFor="cash-tips" className="block text-sm font-semibold mb-1">Cash Tips ($)</label>
+                  <label htmlFor={`${inputPrefix}cash-tips`} className="block text-sm font-semibold mb-1">Cash Tips ($)</label>
                   <input
-                    id="cash-tips"
+                    id={`${inputPrefix}cash-tips`}
                     type="text"
                     inputMode="decimal"
                     value={cashTip}
@@ -163,9 +169,9 @@ export default function Calculator({ storageKey }: { storageKey: string }) {
                   />
                 </div>
                 <div>
-                  <label htmlFor="credit-tips" className="block text-sm font-semibold mb-1">Credit Tips ($)</label>
+                  <label htmlFor={`${inputPrefix}credit-tips`} className="block text-sm font-semibold mb-1">Credit Tips ($)</label>
                   <input
-                    id="credit-tips"
+                    id={`${inputPrefix}credit-tips`}
                     type="text"
                     inputMode="decimal"
                     value={creditTip}
@@ -176,7 +182,7 @@ export default function Calculator({ storageKey }: { storageKey: string }) {
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            {!shared && <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
               <h2 className="text-lg font-bold mb-4">Add Employee</h2>
               <form onSubmit={handleAddEmployee} className="space-y-4">
                 <input aria-label="Employee name" name="name" type="text" placeholder="Name" required className="w-full border border-gray-300 rounded p-2 text-sm" />
@@ -187,39 +193,39 @@ export default function Calculator({ storageKey }: { storageKey: string }) {
                 </button>
                 {formError && <p role="alert" className="text-sm text-red-700">{formError}</p>}
               </form>
-            </div>
+            </div>}
           </div>
 
           {/* Roster Section */}
           <div className="md:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
             <div className="flex flex-wrap justify-between items-end gap-2 mb-4 border-b pb-2">
-              <h2 className="text-lg font-bold">Employee Roster</h2>
+              <h2 className="text-lg font-bold">{shared ? 'Selected Participants' : 'Employee Roster'}</h2>
               <span className="text-sm text-gray-500 font-semibold">Total Shares: {calculation ? formatCents(calculation.totalWeightUnits).replace(/\.00$/, '') : '—'}</span>
             </div>
 
-            <p className="text-sm text-gray-600 mb-3">Browser-local roster. Saved only in this browser; not synchronized to Supabase. Use fictional data for DEV testing.</p>
-            {roster.error && <p role="alert" className="text-sm text-red-700 mb-3">{roster.error}</p>}
-            {employees.length === 0 ? (
-              <p className="text-gray-400 text-center py-8">No employees added. Roster is empty.</p>
+            <p className="text-sm text-gray-600 mb-3">{shared ? `Restaurant shared roster · ${shared.restaurantName}. Temporary preview only; no saved shift or payment.` : 'Browser-local roster. Saved only in this browser; not synchronized to Supabase. Use fictional data for DEV testing.'}</p>
+            {!shared && roster.error && <p role="alert" className="text-sm text-red-700 mb-3">{roster.error}</p>}
+            {displayEmployees.length === 0 ? (
+              <p className="text-gray-400 text-center py-8">{shared ? 'No participants selected.' : 'No employees added. Roster is empty.'}</p>
             ) : (
               <div className="space-y-3">
-                {employees.map(emp => (
+                {displayEmployees.map(emp => (
                   <div key={emp.id} role="group" aria-label={`Employee ${emp.name}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-gray-50 border border-gray-100 rounded">
                     <div className="min-w-0 break-words">
                       <p className="font-bold">{emp.name} <span className="text-xs text-gray-500 font-normal bg-gray-200 px-2 py-1 rounded ml-2">{emp.jobTitle}</span></p>
-                      <p className="text-sm text-gray-600 mt-1">Weight: {emp.weight}</p>
+                      <p className="text-sm text-gray-600 mt-1">Weight: {emp.weightText}</p>
                     </div>
                     <div className="flex items-center justify-between shrink-0 space-x-4">
                       <p className="font-mono font-bold text-lg text-blue-700">
                         {money(payoutsById.get(emp.id))}
                       </p>
-                      <button
+                      {!shared && <button
                         aria-label={`Remove ${emp.name}`}
                         onClick={() => handleRemoveEmployee(emp.id)}
                         className="text-red-500 hover:text-red-700 font-bold px-2 py-1"
                       >
                         ✕
-                      </button>
+                      </button>}
                     </div>
                   </div>
                 ))}
