@@ -8,6 +8,9 @@ export type SharedRosterData = { roles: SharedRole[]; employees: SharedEmployee[
 // Fail explicitly instead of presenting a gateway-truncated roster as complete.
 // Pagination and large-roster UX belong to a separately scoped follow-up.
 export class SharedRosterError extends Error {}
+// A failed post-read membership check must invalidate even previously verified
+// restaurant options; a roster-only failure must not hide those options.
+export class SharedRosterAccessError extends SharedRosterError {}
 
 const rowLimit = 1000;
 const invalid = 'Shared data could not be verified. Refresh access or contact the project owner.';
@@ -101,7 +104,13 @@ export async function readSharedRoster(client: SupabaseClient, userId: string, o
   if (employees.some(employee => !roleIds.has(employee.default_role_id))) throw new SharedRosterError(invalid);
   // RLS-hidden rows are indistinguishable from empty tables. Recheck current
   // membership after both reads before accepting an empty/successful snapshot.
-  const current = await readOrganizations(client, userId, signal);
-  if (!current.some(org => org.id === organizationId)) throw new SharedRosterError(accessChanged);
+  try {
+    const current = await readOrganizations(client, userId, signal);
+    if (!current.some(org => org.id === organizationId)) throw new SharedRosterError(accessChanged);
+  } catch (error) {
+    signal.throwIfAborted();
+    throw new SharedRosterAccessError(error instanceof SharedRosterError
+      ? error.message : 'Unable to load shared data. Check your connection and retry.');
+  }
   return { roles, employees };
 }
