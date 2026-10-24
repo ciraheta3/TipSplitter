@@ -240,7 +240,8 @@ it('keeps defaults/selection during access checks and only explicitly reloads th
   fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100' } });
   tables.employees[0].default_weight_override = '50';
   view.rerender(panel({ accessRevision: 1, accessPending: true }));
-  expect(screen.queryByRole('group', { name: 'Participating employees' })).not.toBeInTheDocument();
+  expect(participating()).toBeVisible();
+  expect(participating().closest('[inert]')).not.toBeNull();
   await act(async () => {});
   view.rerender(panel({ accessRevision: 1, accessPending: false }));
   await loaded();
@@ -736,6 +737,69 @@ it('preserves temporary entries, exclusion, edited text and an open form during 
     expect(screen.getByLabelText('Temporary participant name')).toHaveValue('Fictional draft');
   }
   expect(exactReads()).toHaveLength(1);
+});
+
+it.each(['parent', 'revision', 'auth'] as const)('keeps a verified large preview visible and inert during a pending %s check', async trigger => {
+  tables.employees = Array.from({ length: 50 }, (_, index) => ({ ...employee(), id: id(100 + index), name: `Fictional Employee ${index}` }));
+  const view = render(panel()); await loaded(); choose('Fictional Employee 49');
+  editWeight('75.25', 'Fictional Employee 49');
+  addTemporary(); editWeight('25.50', 'Fictional Guest');
+  const list = participating();
+  const row = screen.getByRole('group', { name: 'Shared employee Fictional Employee 49' });
+  const checkbox = within(row).getByRole('checkbox');
+  const cash = screen.getByLabelText('Cash Tips ($)');
+  const credit = screen.getByLabelText('Credit Tips ($)');
+  const rounding = screen.getByRole('checkbox', { name: 'Round down to whole dollar' });
+  const form = screen.getByRole('form', { name: 'Add temporary participant' });
+  const draft = screen.getByLabelText('Temporary participant name');
+  const payout = screen.getByRole('group', { name: 'Employee Fictional Guest' });
+  fireEvent.change(cash, { target: { value: '100.01' } });
+  fireEvent.change(credit, { target: { value: '25.50' } });
+  fireEvent.click(rounding);
+  fireEvent.change(draft, { target: { value: 'Fictional draft' } });
+  const originalPayout = payout.textContent;
+  const late = deferred<Response>();
+  intercept = request => request.table === 'organization_memberships' ? late.promise : undefined;
+  if (trigger === 'auth') act(() => emit('TOKEN_REFRESHED', session));
+  else view.rerender(panel(trigger === 'parent' ? { accessPending: true } : { accessRevision: 1 }));
+  for (const node of [list, row, cash, form, payout]) {
+    expect(node).toBeInTheDocument();
+    expect(node).toBeVisible();
+    expect(node.closest('[inert]')).not.toBeNull();
+    expect(node.closest('[hidden]')).toBeNull();
+  }
+  expect(list.querySelectorAll('input[type="checkbox"]')).toHaveLength(51);
+  fireEvent.click(checkbox); // Even a stale dispatched event cannot change selection.
+  fireEvent.change(within(row).getByLabelText('Temporary share weight · Fictional Employee 49'), { target: { value: '1' } });
+  fireEvent.submit(form);
+  if (trigger === 'parent') view.rerender(panel());
+  else await act(async () => late.resolve(response([membership()])));
+  await waitFor(() => expect(list).toBeVisible());
+  expect(participating()).toBe(list);
+  expect(screen.getByLabelText('Cash Tips ($)')).toBe(cash);
+  expect(cash).toHaveValue('100.01'); expect(credit).toHaveValue('25.50');
+  expect(rounding).toBeChecked(); expect(checkbox).toBeChecked();
+  expect(weightInput('Fictional Employee 49')).toHaveValue('75.25');
+  expect(weightInput('Fictional Guest')).toHaveValue('25.50');
+  expect(draft).toHaveValue('Fictional draft');
+  expect(payout).toHaveTextContent(originalPayout!);
+  expect(exactReads()).toHaveLength(1);
+});
+
+it('clears a visible prior snapshot when a delayed background membership check denies access', async () => {
+  const view = render(panel()); await loaded(); choose(); addTemporary();
+  const row = screen.getByRole('group', { name: 'Shared employee Fictional Avery' });
+  const temporary = temporaryRow();
+  const late = deferred<Response>();
+  intercept = request => request.table === 'organization_memberships' ? late.promise : undefined;
+  view.rerender(panel({ accessRevision: 1 }));
+  expect(row).toBeVisible(); expect(temporary).toBeVisible();
+  expect(row.closest('[inert]')).not.toBeNull();
+  await act(async () => late.resolve(response([])));
+  expect(await screen.findByRole('alert')).toHaveTextContent('could not be verified');
+  expect(row).not.toBeInTheDocument();
+  expect(temporary).not.toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Participating employees' })).not.toBeInTheDocument();
 });
 
 it('explicit reload clears temporary entries, weights, selections and unsaved form values', async () => {

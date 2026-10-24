@@ -75,7 +75,10 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
   }, [client, userId, organizationId, requestKey]);
 
   const blocked = accessPending || state.checking || state.requestKey !== requestKey || !navigator.onLine;
-  const employees = !blocked && !state.error ? state.employees : undefined;
+  // Keep the verified snapshot's DOM and dimensions during routine checks.
+  // A prior verified snapshot stays visible but inert during routine checks.
+  // Initial loads, explicit reloads and failures have no snapshot to show.
+  const employees = !state.error ? state.employees : undefined;
   const canEdit = () => !blocked && !!employees && !invalidated.current && !controller.current?.signal.aborted;
   const calculationEmployees = employees ? [...employees, ...temporary] : [];
   const selectedEmployees = calculationEmployees.filter(employee => employee.eligible && selected.has(employee.id));
@@ -107,17 +110,16 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
       setState({ checking: true });
       setReload(value => value + 1);
     }}>Reload shared roster / clear selection</button>
-    {blocked && !state.error && <p role="status">Verifying shared calculation access and loading exact defaults…</p>}
+    <p role="status" style={{ visibility: blocked && !state.error ? undefined : 'hidden' }} aria-hidden={!blocked || !!state.error}>Verifying shared calculation access and loading exact defaults…</p>
     {state.error && <p role="alert">{state.error}</p>}
-    {state.employees && !state.error && <div hidden={blocked}>
-      <TemporaryParticipantForm disabled={blocked} onAdd={(name, jobTitle, weightText, weightUnits) => {
+    <div className="space-y-4" style={{ visibility: !employees || !navigator.onLine || state.accountChanged ? 'hidden' : undefined }} inert={blocked}>
+    {employees && <TemporaryParticipantForm disabled={blocked} onAdd={(name, jobTitle, weightText, weightUnits) => {
         if (!canEdit()) return false;
         const id = `temporary:${inputPrefix}:${nextTemporaryId.current++}`;
         setTemporary(previous => [...previous, { id, name, jobTitle, weightText, weightUnits, eligible: true, isTemporary: true }]);
         setSelected(previous => new Set(previous).add(id));
         return true;
-      }} />
-    </div>}
+      }} />}
     {employees && <>
       <p role="status">{selectedEmployees.length} participants selected for this preview.</p>
       {!calculationEmployees.length ? <p>No shared employees to select.</p> : <fieldset className="space-y-2">
@@ -178,6 +180,7 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
       </fieldset>}
     </>}
     {!state.error && <Calculator storageKey="" shared={{ participants, restaurantName, unavailable: !employees, validationError }} />}
+    </div>
   </section>;
 }
 

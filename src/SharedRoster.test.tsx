@@ -164,7 +164,7 @@ it('requires explicit selection for multiple memberships and clears A while B lo
   intercept = (table, url) => table === 'employees' && url.searchParams.get('organization_id') === `eq.${orgA.id}` ? lateA.promise : undefined;
   refresh();
   await screen.findByLabelText('Restaurant');
-  expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
+  expect(screen.getByText(`${employee().name} · Active`)).toBeVisible();
   await userEvent.selectOptions(screen.getByLabelText('Restaurant'), orgB.id);
   expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
   await loaded(orgB);
@@ -217,7 +217,7 @@ it.each(['server', 'oversized'])('keeps freshly verified restaurant options afte
     expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Manage shared roster · DEV' })).not.toBeInTheDocument();
     refresh();
-    await waitFor(() => expect(screen.queryByText('Checking restaurant access and loading shared roster…')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Checking restaurant access and loading shared roster…')).not.toBeVisible());
     expect(await screen.findByRole('alert')).toHaveTextContent(message);
   }
   await userEvent.selectOptions(screen.getByLabelText('Restaurant'), orgB.id);
@@ -297,8 +297,9 @@ it.each(['denied', 'network', 'server'])('clears a successful snapshot on %s fai
     return new Response(JSON.stringify({ code: kind === 'denied' ? '42501' : 'XX000', message: 'private server detail' }), { status: kind === 'denied' ? 403 : 500 });
   };
   refresh();
-  expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
+  expect(screen.getByText(`${employee().name} · Active`)).toBeVisible();
   expect(await screen.findByRole('alert')).toHaveTextContent(kind === 'denied' ? /access denied/ : /Check your connection/);
+  expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
   expect(screen.queryByText(/private .* detail/)).not.toBeInTheDocument();
   expect(screen.queryByText('No shared employees.')).not.toBeInTheDocument();
   intercept = () => undefined;
@@ -320,8 +321,9 @@ it('detects revocation on focus and never reports RLS-hidden reads as an empty r
   render(gate()); await loaded();
   tables.organization_memberships = [];
   fireEvent(window, new Event('focus'));
-  expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
+  expect(screen.getByText(`${employee().name} · Active`)).toBeVisible();
   expect(await screen.findByText('No restaurant access assigned')).toBeVisible();
+  expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
   expect(screen.queryByText('No shared employees.')).not.toBeInTheDocument();
 });
 
@@ -336,6 +338,39 @@ it('detects revocation between context and roster reads', async () => {
   render(gate());
   expect(await screen.findByRole('alert')).toHaveTextContent('Restaurant access changed');
   expect(screen.queryByText('No shared employees.')).not.toBeInTheDocument();
+});
+
+it('retains 50 summary rows and local drafts through delayed focus, visibility, online and timer checks', async () => {
+  vi.useFakeTimers();
+  tables.employees.push(...Array.from({ length: 49 }, (_, index) => ({ ...employee(), id: `fictional-${index}`, name: `Fictional Employee ${index}` })));
+  const saved = JSON.stringify([{ id: 'local', name: 'Fictional Local', jobTitle: 'Server', weight: 100 }]);
+  localStorage.setItem(accountRosterKey(project, userA.id), saved);
+  render(gate());
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  const row = screen.getByText(`${employee().name} · Active`);
+  const list = row.closest('ul')!;
+  const cash = screen.getByLabelText('Cash Tips ($)');
+  fireEvent.change(cash, { target: { value: '42.50' } });
+  for (const event of ['focus', 'visibilitychange', 'online', 'minute']) {
+    const late = deferred<Response>();
+    intercept = (table, url) => table === 'organization_memberships' ? late.promise : queryResponse(table, url);
+    await act(async () => {
+      if (event === 'minute') await vi.advanceTimersByTimeAsync(60_000);
+      else if (event === 'visibilitychange') document.dispatchEvent(new Event(event));
+      else window.dispatchEvent(new Event(event));
+    });
+    expect(row).toBeInTheDocument(); expect(row).toBeVisible();
+    expect(list.children).toHaveLength(50);
+    expect(row.closest('[inert]')).not.toBeNull();
+    expect(row.closest('[hidden]')).toBeNull();
+    expect(cash).toBeVisible(); expect(cash).toHaveValue('42.50');
+    intercept = () => undefined;
+    await act(async () => { late.resolve(response([membership()])); await vi.advanceTimersByTimeAsync(0); });
+    expect(row).toBeVisible();
+    expect(screen.getByText(`${employee().name} · Active`)).toBe(row);
+    expect(screen.getByLabelText('Cash Tips ($)')).toBe(cash);
+  }
+  expect(localStorage.getItem(accountRosterKey(project, userA.id))).toBe(saved);
 });
 
 it.each(['foreign-role', 'foreign-employee', 'foreign-default', 'duplicate', 'malformed'])('fails closed for %s rows, with no employee disclosure', async kind => {

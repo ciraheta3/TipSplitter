@@ -71,7 +71,7 @@ function RosterRequest({ client, userId, calculationMode, selection, onSelect, r
         }
         preferred.current = selected;
         // Keep the same authorized management subtree mounted during a check.
-        // Summary rows remain hidden while loading. Failure still clears data.
+        // Keep the previous verified snapshot mounted during a routine check.
         setState(previous => ({ organizations, selected, loading: true, roster: previous.roster, revision }));
         try {
           const roster = await readSharedRoster(client, userId, selected, controller.signal);
@@ -107,7 +107,7 @@ function RosterRequest({ client, userId, calculationMode, selection, onSelect, r
         {state.organizations.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
       </select>
     </div> : state.selected && <p className="font-semibold break-words">Restaurant: {state.organizations.find(org => org.id === state.selected)?.name}</p>}
-    {loading && <p role="status">Checking restaurant access and loading shared roster…</p>}
+    <p role="status" style={{ visibility: loading ? undefined : 'hidden' }} aria-hidden={!loading}>Checking restaurant access and loading shared roster…</p>
     {state.error && <p role="alert">{state.error}{manage && ' Management was closed and any unsaved draft was cleared because access could not be verified.'}</p>}
     {!loading && !state.error && state.organizations.length > 1 && !state.selected && <p>Select a restaurant to view its shared roster.</p>}
     {!loading && !state.error && !state.organizations.length && <div>
@@ -120,7 +120,7 @@ function RosterRequest({ client, userId, calculationMode, selection, onSelect, r
       setManage(false);
       setState({ organizations: [], selected: '', loading: true });
       setReload(value => value + 1);
-    }} /> : !loading && roster && <>
+    }} /> : roster && <div className="space-y-4" inert={loading}>
       <p className="text-sm text-gray-600">Snapshot only. Access is rechecked on refresh, focus, reconnect and every minute; this is not a live subscription.</p>
       <button className={buttonClass} onClick={() => setManage(true)}>Manage shared roster · DEV</button>
       <div className="grid sm:grid-cols-2 gap-6">
@@ -138,6 +138,6 @@ function RosterRequest({ client, userId, calculationMode, selection, onSelect, r
           </ul>}
         </div>
       </div>
-    </>)}
+    </div>)}
   </div>;
 }
