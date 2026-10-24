@@ -240,7 +240,8 @@ it('keeps defaults/selection during access checks and only explicitly reloads th
   fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100' } });
   tables.employees[0].default_weight_override = '50';
   view.rerender(panel({ accessRevision: 1, accessPending: true }));
-  expect(screen.queryByRole('group', { name: 'Participating employees' })).not.toBeInTheDocument();
+  expect(participating()).toBeVisible();
+  expect(participating().closest('[inert]')).not.toBeNull();
   await act(async () => {});
   view.rerender(panel({ accessRevision: 1, accessPending: false }));
   await loaded();
@@ -738,7 +739,7 @@ it('preserves temporary entries, exclusion, edited text and an open form during 
   expect(exactReads()).toHaveLength(1);
 });
 
-it.each(['parent', 'revision', 'auth'] as const)('retains a large preview DOM without exposing or editing it during a pending %s check', async trigger => {
+it.each(['parent', 'revision', 'auth'] as const)('keeps a verified large preview visible and inert during a pending %s check', async trigger => {
   tables.employees = Array.from({ length: 50 }, (_, index) => ({ ...employee(), id: id(100 + index), name: `Fictional Employee ${index}` }));
   const view = render(panel()); await loaded(); choose('Fictional Employee 49');
   editWeight('75.25', 'Fictional Employee 49');
@@ -763,7 +764,7 @@ it.each(['parent', 'revision', 'auth'] as const)('retains a large preview DOM wi
   else view.rerender(panel(trigger === 'parent' ? { accessPending: true } : { accessRevision: 1 }));
   for (const node of [list, row, cash, form, payout]) {
     expect(node).toBeInTheDocument();
-    expect(node).not.toBeVisible();
+    expect(node).toBeVisible();
     expect(node.closest('[inert]')).not.toBeNull();
     expect(node.closest('[hidden]')).toBeNull();
   }
@@ -783,6 +784,22 @@ it.each(['parent', 'revision', 'auth'] as const)('retains a large preview DOM wi
   expect(draft).toHaveValue('Fictional draft');
   expect(payout).toHaveTextContent(originalPayout!);
   expect(exactReads()).toHaveLength(1);
+});
+
+it('clears a visible prior snapshot when a delayed background membership check denies access', async () => {
+  const view = render(panel()); await loaded(); choose(); addTemporary();
+  const row = screen.getByRole('group', { name: 'Shared employee Fictional Avery' });
+  const temporary = temporaryRow();
+  const late = deferred<Response>();
+  intercept = request => request.table === 'organization_memberships' ? late.promise : undefined;
+  view.rerender(panel({ accessRevision: 1 }));
+  expect(row).toBeVisible(); expect(temporary).toBeVisible();
+  expect(row.closest('[inert]')).not.toBeNull();
+  await act(async () => late.resolve(response([])));
+  expect(await screen.findByRole('alert')).toHaveTextContent('could not be verified');
+  expect(row).not.toBeInTheDocument();
+  expect(temporary).not.toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Participating employees' })).not.toBeInTheDocument();
 });
 
 it('explicit reload clears temporary entries, weights, selections and unsaved form values', async () => {

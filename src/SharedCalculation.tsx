@@ -76,7 +76,8 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
 
   const blocked = accessPending || state.checking || state.requestKey !== requestKey || !navigator.onLine;
   // Keep the verified snapshot's DOM and dimensions during routine checks.
-  // The wrapper below hides it and blocks interaction; failures discard it.
+  // A prior verified snapshot stays visible but inert during routine checks.
+  // Initial loads, explicit reloads and failures have no snapshot to show.
   const employees = !state.error ? state.employees : undefined;
   const canEdit = () => !blocked && !!employees && !invalidated.current && !controller.current?.signal.aborted;
   const calculationEmployees = employees ? [...employees, ...temporary] : [];
@@ -111,7 +112,7 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
     }}>Reload shared roster / clear selection</button>
     <p role="status" style={{ visibility: blocked && !state.error ? undefined : 'hidden' }} aria-hidden={!blocked || !!state.error}>Verifying shared calculation access and loading exact defaults…</p>
     {state.error && <p role="alert">{state.error}</p>}
-    <div className="space-y-4" style={{ visibility: blocked ? 'hidden' : undefined }} inert={blocked}>
+    <div className="space-y-4" style={{ visibility: !employees || !navigator.onLine || state.accountChanged ? 'hidden' : undefined }} inert={blocked}>
     {employees && <TemporaryParticipantForm disabled={blocked} onAdd={(name, jobTitle, weightText, weightUnits) => {
         if (!canEdit()) return false;
         const id = `temporary:${inputPrefix}:${nextTemporaryId.current++}`;

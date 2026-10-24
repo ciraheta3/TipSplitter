@@ -71,8 +71,7 @@ function RosterRequest({ client, userId, calculationMode, selection, onSelect, r
         }
         preferred.current = selected;
         // Keep the same authorized management subtree mounted during a check.
-        // Summary rows remain hidden in their layout space while checking.
-        // Removing them would move the local calculator below this section.
+        // Keep the previous verified snapshot mounted during a routine check.
         setState(previous => ({ organizations, selected, loading: true, roster: previous.roster, revision }));
         try {
           const roster = await readSharedRoster(client, userId, selected, controller.signal);
@@ -121,7 +120,7 @@ function RosterRequest({ client, userId, calculationMode, selection, onSelect, r
       setManage(false);
       setState({ organizations: [], selected: '', loading: true });
       setReload(value => value + 1);
-    }} /> : roster && <div className="space-y-4" style={{ visibility: loading ? 'hidden' : undefined }} inert={loading}>
+    }} /> : roster && <div className="space-y-4" inert={loading}>
       <p className="text-sm text-gray-600">Snapshot only. Access is rechecked on refresh, focus, reconnect and every minute; this is not a live subscription.</p>
       <button className={buttonClass} onClick={() => setManage(true)}>Manage shared roster · DEV</button>
       <div className="grid sm:grid-cols-2 gap-6">

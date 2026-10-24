@@ -164,7 +164,7 @@ it('requires explicit selection for multiple memberships and clears A while B lo
   intercept = (table, url) => table === 'employees' && url.searchParams.get('organization_id') === `eq.${orgA.id}` ? lateA.promise : undefined;
   refresh();
   await screen.findByLabelText('Restaurant');
-  expect(screen.getByText(`${employee().name} · Active`)).not.toBeVisible();
+  expect(screen.getByText(`${employee().name} · Active`)).toBeVisible();
   await userEvent.selectOptions(screen.getByLabelText('Restaurant'), orgB.id);
   expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
   await loaded(orgB);
@@ -297,7 +297,7 @@ it.each(['denied', 'network', 'server'])('clears a successful snapshot on %s fai
     return new Response(JSON.stringify({ code: kind === 'denied' ? '42501' : 'XX000', message: 'private server detail' }), { status: kind === 'denied' ? 403 : 500 });
   };
   refresh();
-  expect(screen.getByText(`${employee().name} · Active`)).not.toBeVisible();
+  expect(screen.getByText(`${employee().name} · Active`)).toBeVisible();
   expect(await screen.findByRole('alert')).toHaveTextContent(kind === 'denied' ? /access denied/ : /Check your connection/);
   expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
   expect(screen.queryByText(/private .* detail/)).not.toBeInTheDocument();
@@ -321,7 +321,7 @@ it('detects revocation on focus and never reports RLS-hidden reads as an empty r
   render(gate()); await loaded();
   tables.organization_memberships = [];
   fireEvent(window, new Event('focus'));
-  expect(screen.getByText(`${employee().name} · Active`)).not.toBeVisible();
+  expect(screen.getByText(`${employee().name} · Active`)).toBeVisible();
   expect(await screen.findByText('No restaurant access assigned')).toBeVisible();
   expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
   expect(screen.queryByText('No shared employees.')).not.toBeInTheDocument();
@@ -359,7 +359,7 @@ it('retains 50 summary rows and local drafts through delayed focus, visibility, 
       else if (event === 'visibilitychange') document.dispatchEvent(new Event(event));
       else window.dispatchEvent(new Event(event));
     });
-    expect(row).toBeInTheDocument(); expect(row).not.toBeVisible();
+    expect(row).toBeInTheDocument(); expect(row).toBeVisible();
     expect(list.children).toHaveLength(50);
     expect(row.closest('[inert]')).not.toBeNull();
     expect(row.closest('[hidden]')).toBeNull();

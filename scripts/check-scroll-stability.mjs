@@ -67,7 +67,9 @@ try {
         requests: window.scrollFixture.events.filter(event => event.type.startsWith('request:')).length,
         scrollY, documentHeight: document.documentElement.scrollHeight,
         summaryHeight: summary.getBoundingClientRect().height,
+        summaryVisible: summary.querySelector('li') ? window.getComputedStyle(summary.querySelector('li')).visibility === 'visible' : false,
         participantHeight: participantList?.getBoundingClientRect().height ?? 0,
+        participantVisible: participantList ? window.getComputedStyle(participantList).visibility === 'visible' : null,
         cashConnected: window.scrollProbe.cash.isConnected,
         rowConnected: window.scrollProbe.row?.isConnected ?? null,
         sameDocument: performance.timeOrigin === window.scrollProbe.timeOrigin,
@@ -104,8 +106,10 @@ try {
         assert.ok(Math.abs(before.scrollY - during.scrollY) <= 1, `${mode}/${trigger}: pending scroll changed`);
         assert.ok(Math.abs(before.scrollY - after.scrollY) <= 1, `${mode}/${trigger}: completed scroll changed`);
         assert.equal(during.summaryHeight, before.summaryHeight);
+        if (mode === 'local') assert.equal(during.summaryVisible, true);
         assert.equal(during.documentHeight, before.documentHeight);
         assert.equal(during.participantHeight, before.participantHeight);
+        if (mode === 'shared') assert.equal(during.participantVisible, true);
         assert.equal(during.cashConnected, true);
         assert.equal(after.sameDocument, true);
         if (mode === 'shared') assert.equal(during.rowConnected, true);

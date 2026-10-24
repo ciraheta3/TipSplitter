@@ -57,16 +57,19 @@ acceptance items. Chromium with touch enabled is **not Safari emulation**.
 [SharedRoster.tsx](../src/SharedRoster.tsx) keeps the summary subtree mounted while
 pending. [SharedCalculation.tsx](../src/SharedCalculation.tsx) keeps its existing
 participant, form and calculator subtree and inputs intact. Both reserve space
-for their status text. Pending protected content uses `visibility: hidden` and
-`inert`, retaining its dimensions while preventing display, focus and interaction.
-The existing `canEdit` guards continue rejecting stale participant events.
+for their status text. PR #44 initially used `visibility: hidden` and `inert` on every pending check.
+Real iPad testing then confirmed that this caused a white flash every minute.
+Previously verified same-scope content now stays visible and `inert` during a
+routine check, retaining its dimensions without a flash. Initial loads, explicit
+reloads, offline states and failed authorization still hide or remove protected
+content. The existing `canEdit` guards continue rejecting stale participant events.
 
 Errors, revocation, account/restaurant/client changes, sign-out and explicit
 snapshot reload still clear the corresponding protected data as before. Pending
 DOM is retained only within the same scope; it is not a fallback after failure.
 No `scrollTo`, saved scroll offset, arbitrary minimum roster height, new dependency
-or security-check suppression is used. Successful checks may still briefly blank
-protected content; they should no longer shorten the document. Real roster changes
+or security-check suppression is used. Successful routine checks keep protected content visible and preserve the
+scroll position. They briefly block interaction until verification finishes. Real roster changes
 or intentional source switches can legitimately change its size.
 
 ## Reproduction and automated evidence
@@ -111,20 +114,25 @@ remained at zero. That variation is consistent with layout-dependent behavior,
 not evidence that Safari must choose the identical offsets. New reserved status
 slots explain the small fixed-versus-baseline initial height difference.
 
-The 11 delayed-refresh cases fail against baseline and pass with the fix. Unit
-regressions additionally retain exact DOM references for 50-row previews, assert
-hidden/inert pending states, reject stale edit events, and preserve local storage.
+The 11 delayed-refresh cases fail against baseline and pass with the fix. A
+follow-up browser assertion requires verified summary and participant rows to
+remain visible during successful pending checks. Unit regressions retain exact
+DOM references for 50-row previews, assert visible/inert pending states, reject
+stale edit events, and preserve local storage.
 Existing tests cover failed verification, account/project/restaurant changes,
 sign-out, offline access, late responses, temporary participant lifecycle and exact
-arithmetic. `npm run check` passed: **382 frontend tests in 8 files**, **14 offline
+arithmetic. `npm run check` passed: **383 frontend tests in 8 files**, **14 offline
 provisioning groups**, **41 offline harness tests**, ESLint, TypeScript and the
-production build. The focused two-file run passed **131 tests**. Browser layout
+production build. The focused two-file run passed **132 tests**. Browser layout
 checks are a separate optional command; jsdom alone cannot verify scrolling.
 
 No native Safari, hosted RLS, real local Supabase or database checks are claimed.
-The code does not change those layers. A pending check can still remove focus from
-a now-hidden control; test real keyboard/touch behavior before release. Future
-children must not override inherited `visibility: hidden`.
+The code does not change those layers. A pending check makes controls inert and may affect focus on native Safari;
+test real keyboard/touch behavior before release. The previously verified
+snapshot remains visible until a check finishes, so a revoked member may see
+old content while a request is in flight. Failed verification removes it; this
+is not instantaneous revocation. Auth sign-out/account changes still clear the
+view immediately.
 
 ## Three-minute iPad acceptance, without hosted data
 
@@ -139,8 +147,8 @@ children must not override inherited `visibility: hidden`.
 3. Switch to **Restaurant shared roster**, select employees near the middle and
    bottom, edit a temporary weight, add a temporary participant and enter tips.
    Dismiss the keyboard. Toggle rounding, scroll/tap for at least 65 seconds and
-   switch tabs and back. The content may briefly blank during access checks but
-   its space and scroll position must stay stable. Selections, weights, temporary
+   switch tabs and back. The verified content should stay visible during routine access checks,
+   while its space and scroll position remain stable. Selections, weights, temporary
    entries and inputs must remain intact.
 4. Briefly repeat with the keyboard open and after rotating the iPad. Source exit
    intentionally clears shared temporary entries; switching back to local must
