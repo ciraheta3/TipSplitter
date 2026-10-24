@@ -14,15 +14,24 @@ new dependencies, shift records or payment records are part of this change.
 3. Select participating employees. Each checkbox shows name, role and exact
    effective default share weight. None start selected. Inactive employees or
    inactive associated roles are visible and excluded; explicit zero is valid.
-4. Select an eligible employee to enable their **Temporary share weight** input.
+4. Select an eligible shared employee to enable their **Temporary share weight** input.
    It starts with the exact permanent default shown alongside it. Edit the decimal
    text to recalculate immediately; **Reset to default** restores that employee's
    loaded default, without affecting other temporary weights. These are relative
    share weights, not literal tip percentages; nothing changes in Supabase.
-5. Enter cash and credit and use the existing preview/round-down toggle. Results
+5. Use **Add temporary participant** for a one-time employee: enter a name, free-text
+   job title/role label and exact decimal share weight. A valid addition starts
+   selected alongside shared employees, with a **Temporary** label in selection
+   and payout views. Add multiple entries; duplicate names remain distinct.
+   Edit/include/exclude them like shared employees; **Remove temporary participant**
+   removes only that local entry, including when excluded. No shared role or employee
+   is required, even when the verified shared roster is empty. Names/titles must be
+   nonblank and fit the form’s 160/100-character limits.
+6. Enter cash and credit and use the existing preview/round-down toggle. Results
    retain exact cents, whole-dollar floors and explicitly unassigned remainders.
-6. **Reload shared roster / clear selection** replaces the snapshot, resets all
-   temporary weights to the latest verified defaults and clears selections. Cash/credit input stays
+7. **Reload shared roster / clear selection** replaces the snapshot, resets all
+   temporary weights to the latest verified defaults, clears selections and removes
+   all one-time participants and unsaved addition fields. Cash/credit input stays
    during a successful explicit reload. Leaving
    shared mode clears its preview; switching back restores local inputs and roster.
 
@@ -41,8 +50,11 @@ See [PRD eligibility and open owner decisions](PRD.md).
   cancellation, periodic/event refresh and fail-closed request lifecycle.
 - `SharedCalculation` is keyed by client identity, verified account and restaurant.
   Exact roster data, selected IDs, per-employee decimal text and calculator inputs
-  live only in React memory. A new load replaces the complete array; no appending/import/dedup-by-name
-  occurs. Duplicate IDs are invalid; distinct employees may have the same name.
+  live only in React memory. A shared load replaces its complete array; it never
+  imports into the local roster or deduplicates by display name. Local participant IDs use a non-UUID `temporary:` namespace, the scoped
+  React ID and an increasing local counter; they never reuse a Supabase employee
+  UUID. Names never act as identity. Duplicate IDs are invalid; distinct employees
+  may have the same name.
 - `loadCalculationRoster` uses the existing `verifyRosterAccess` pre/post checks
   from the editing adapter: actual Auth user, unchanged live session and current
   active admin/closer membership for the exact selected restaurant. Sharing this
@@ -71,24 +83,30 @@ See [PRD eligibility and open owner decisions](PRD.md).
   network events and the existing minute timer check access; they do not silently
   import new defaults. Auth events abort current reads; account changes clear data.
   Explicit reload, mode exit, failed access and scope/client/restaurant changes
-  discard temporary weights. Routine successful checks preserve even invalid text.
-  Prop changes remount the scope. Late responses cannot restore it.
+  discard temporary weights, one-time participants and addition drafts. Routine
+  successful checks preserve even invalid text.
+  The addition form is hidden/disabled while checking access; it is available only
+  after successful complete roster verification, and successful checks preserve
+  its draft without allowing an addition during the check. Prop changes remount
+  the scope. Late responses cannot restore it.
 
 ## Verification and limits
 
 The deterministic SDK-fetch/React tests use invented identities and records. They
 cover exact-text projections, membership checks, unauthorized/cross-restaurant
 reads, revocation, scope changes during reads, selection, NULL/zero, safe-integer
-boundaries, independent temporary edits, reset, deselect/reselect, inactive handling,
+boundaries, temporary additions/mixed payouts/duplicate names/removal, independent
+temporary edits, reset, deselect/reselect, inactive handling,
 repeated loads, incomplete/error/empty reads, local storage isolation, arithmetic and labelled keyboard/mobile controls. Existing
 calculator, Auth, roster management and engine tests remain regression coverage.
 Executed on 2026-10-23 in Linux, Node 24.19.0 / npm 11.9.0:
 
-- `npm run check`: passed **359 frontend tests in 8 files**, **14 offline
+- `npm run check`: passed **378 frontend tests in 8 files**, **14 offline
   provisioning groups**, **41 offline harness tests**, ESLint, TypeScript and build.
   Filesystem-writing suites used a clean source copy excluding ignored owner files.
-- The frontend total includes **68 bridge regressions** (21 new cases for temporary
-  weights, with existing lifecycle cases extended) and **60 unchanged engine tests**.
+- The frontend total includes **87 bridge regressions** (19 new cases for one-time
+  participants, with existing source/account/project/revocation cases extended)
+  and **60 unchanged engine tests**.
 - `git diff --check` and relative documentation-file link checks: passed.
 - Database/component/full local Supabase suites were not rerun for this frontend
   change. Hosted Supabase and real-device browser acceptance were not performed.
@@ -115,19 +133,27 @@ credentials, employee fixtures or browser exports.
    its loaded default is restored while the second stays 25. Try blank, negative,
    excess-precision and unsafe input: payouts must become unavailable. Deselect
    that employee: only the other receives the pool; reselect to retain the edit.
-2. Check NULL inheritance, explicit zero and disabled inactive employee/role rows.
+2. Add a temporary participant with a free-text role and 50 shares beside a selected
+   shared employee with 100 shares. Check the same 100:50 payout/remainder results.
+   Add a duplicate name: both entries must be distinct. Edit/exclude/reselect/remove
+   only one entry; payouts must update immediately. An invalid selected temporary
+   weight blocks payouts, and zero stays explicit. Focus/periodic refresh must keep
+   entries and unsaved form input; explicit reload/source/account/restaurant/sign-out
+   or access loss must clear them. Confirm shared records and the local roster stay
+   unchanged; there is no permanent-save action.
+3. Check NULL inheritance, explicit zero and disabled inactive employee/role rows.
    With an independently authorized second operator, change a shared default.
    Focus/refresh access must keep the running defaults; explicit reload must show
    the change, reset temporary weights, clear selections and create no duplicate rows.
-3. Switch restaurants, sign out and switch accounts. Prior participants/results
+4. Switch restaurants, sign out and switch accounts. Prior participants/results
    must disappear; a B-only account must never offer or load A. With owner-controlled
    synthetic revocation/network failure, refresh access: show an error/no-access
    state and remove the protected preview. Return to local mode: roster/input stay.
-4. On iPad Safari, open the PR’s Netlify preview when available (publication and
+5. On iPad Safari, open the PR’s Netlify preview when available (publication and
    preview acceptance remain separate owner actions). Independently sign in, choose the same
    restaurant and confirm the same shared records can be selected. Test portrait/
    landscape, checkbox/input/reset tap targets, decimal keyboard, labels, temporary
-   edits, amount entry, source/restaurant switching,
+   edits, addition/removal, amount entry, source/restaurant switching,
    reload, offline error/recovery and sign-out. Selections are independent per device.
 
 Codex has not performed hosted Supabase or Mac/iPad browser verification. This work

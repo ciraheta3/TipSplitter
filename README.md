@@ -37,10 +37,13 @@ After sign-in, choose **Restaurant shared roster** as the calculation source and
 select an authorized restaurant using the existing selector. Check participating
 employees, edit temporary share weights beside their permanent defaults, then
 enter cash/credit and review the existing cent or whole-dollar preview.
-Active employees with active roles are selectable; zero weights remain valid.
+Active shared employees with active roles are selectable; zero weights remain valid.
+**Add temporary participant** supports one-time names, free-text role labels and
+weights without creating Supabase employees/roles. Entries are labelled Temporary,
+start included and can be edited, excluded or removed; reload/exit/access loss clears them.
 Defaults and selections stay in memory. **Reload shared roster / clear selection**
-replaces defaults explicitly and resets temporary edits. Per-employee Reset restores
-the loaded default; no temporary edit writes to Supabase or localStorage. Switching back preserves the browser-local roster
+replaces defaults explicitly and resets temporary edits. Reset restores a shared
+employee’s loaded default; no temporary edit writes to Supabase or localStorage. Switching back preserves the browser-local roster
 and its inputs; leaving shared mode clears its temporary preview. No shift or
 payment is saved. See [design and Mac/iPad checks](docs/SHARED-ROSTER-CALCULATOR.md).
 
@@ -49,8 +52,8 @@ payment is saved. See [design and Mac/iPad checks](docs/SHARED-ROSTER-CALCULATOR
 The client uses React 19, TypeScript 6, Vite 8, and Tailwind CSS 4. [src/App.tsx](src/App.tsx) selects local preview or the DEV Auth gate; [src/Calculator.tsx](src/Calculator.tsx) reuses the existing preview for browser-local or exact-unit shared participants. See [frontend Auth setup and acceptance](docs/AUTH.md). The pure TypeScript engine in [src/calculation.ts](src/calculation.ts) parses money into integer cents, scales weights to integer hundredths, and uses BigInt intermediates for exact proportional arithmetic and signed reconciliation.
 
 The merged PR #39 baseline has 291 frontend tests, 14 offline provisioning groups
-and 41 offline integration-harness tests. This branch adds 68 shared calculation
-regressions (359 frontend tests total); `npm run check` passes.
+and 41 offline integration-harness tests. This branch adds 87 shared calculation
+regressions (378 frontend tests total); `npm run check` passes.
 ESLint and TypeScript also check the source. GitHub Actions runs frontend tests,
 lint, and the production build on pull requests and pushes to `main`.
 

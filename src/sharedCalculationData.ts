@@ -5,7 +5,7 @@ import { verifyRosterAccess } from './sharedRosterEditingData';
 import { sharedOverrideText, sharedWeightText } from './sharedRosterWeights';
 import { SharedRosterError } from './sharedRosterData';
 
-export type CalculationParticipant = Participant & { name: string; jobTitle: string; weightText: string };
+export type CalculationParticipant = Participant & { name: string; jobTitle: string; weightText: string; isTemporary?: boolean };
 export type SharedCalculationEmployee = CalculationParticipant & { eligible: boolean; exclusion?: string };
 export const calculationRoleProjection = 'id,organization_id,name,is_active,default_weight::text';
 export const calculationEmployeeProjection = 'id,organization_id,name,is_active,default_role_id,default_weight_override::text';

@@ -54,7 +54,7 @@ export default function Calculator({ storageKey, shared }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const { employees } = roster;
 
-  const displayEmployees = shared ? (shared.unavailable || shared.validationError ? [] : shared.participants) : employees.map(employee => ({ ...employee, weightText: String(employee.weight) }));
+  const displayEmployees = shared ? (shared.unavailable || shared.validationError ? [] : shared.participants) : employees.map(employee => ({ ...employee, weightText: String(employee.weight), isTemporary: false }));
   const inputPrefix = shared ? 'shared-' : '';
 
   let totalTipCents: number | undefined;
@@ -213,7 +213,7 @@ export default function Calculator({ storageKey, shared }: Props) {
                 {displayEmployees.map(emp => (
                   <div key={emp.id} role="group" aria-label={`Employee ${emp.name}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-gray-50 border border-gray-100 rounded">
                     <div className="min-w-0 break-words">
-                      <p className="font-bold">{emp.name} <span className="text-xs text-gray-500 font-normal bg-gray-200 px-2 py-1 rounded ml-2">{emp.jobTitle}</span></p>
+                      <p className="font-bold">{emp.name} <span className="text-xs text-gray-500 font-normal bg-gray-200 px-2 py-1 rounded ml-2">{emp.jobTitle}</span>{emp.isTemporary && <span className="ml-2 rounded bg-amber-100 px-2 py-1 text-xs">Temporary</span>}</p>
                       <p className="text-sm text-gray-600 mt-1">{shared ? 'Share weight' : 'Weight'}: {emp.weightText}</p>
                     </div>
                     <div className="flex items-center justify-between shrink-0 space-x-4">

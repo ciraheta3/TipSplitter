@@ -36,11 +36,22 @@ relative share weights (not tip percentages), with the permanent default beside
 them. Individual Reset restores the loaded default; this never writes to Supabase
 or localStorage. No saved-shift override precedence is defined.
 
+Within a successfully verified restaurant scope, **Add temporary participant**
+creates a memory-only entry with a name, free-text role label and manually entered
+share weight; no permanent role or employee is required. Valid additions start
+selected, are visibly Temporary, and support weight editing, inclusion/exclusion
+and local removal. Duplicate names use distinct local IDs. There is no save-to-roster
+option. The same exact parsing, invalid-selected-weight block and financial engine
+apply to mixed shared/temporary participants.
+
 Successful routine access checks preserve the snapshot/selection/inputs. Shared
 edits, including activation changes, do not silently change a running preview.
 Explicit reload replaces the snapshot, resets temporary weights to the latest
 verified defaults and clears selections. Leaving shared mode, scope changes,
-sign-out or failed verification clears temporary edits. Deselecting excludes an
+sign-out or failed verification clears temporary edits, one-time participants and
+addition drafts. Explicit reload also clears one-time entries; successful routine
+checks preserve entries and drafts while hiding/disabling addition during checking.
+Deselecting excludes an
 employee immediately; reselecting during the same preview retains their text.
 Invalid selected weights block all payout previews without a default/previous-value
 fallback; invalid unselected inputs do not affect allocation. No shift or payment

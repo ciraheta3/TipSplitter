@@ -80,6 +80,15 @@ const reload = () => fireEvent.click(screen.getByRole('button', { name: 'Reload 
 const exactReads = () => requests.filter(request => request.url.searchParams.get('select') === calculationEmployeeProjection);
 function emit(event: AuthChangeEvent, candidate: Session | null) { session = candidate; listeners.forEach(callback => callback(event, candidate)); }
 
+function addTemporary(name = 'Fictional Guest', weight = '50', jobTitle = 'Fictional visiting server') {
+  fireEvent.change(screen.getByLabelText('Temporary participant name'), { target: { value: name } });
+  fireEvent.change(screen.getByLabelText('Job title / role label'), { target: { value: jobTitle } });
+  fireEvent.change(screen.getByLabelText('Initial share weight'), { target: { value: weight } });
+  fireEvent.submit(screen.getByRole('form', { name: 'Add temporary participant' }));
+}
+const temporaryRow = (name = 'Fictional Guest') => screen.getByRole('group', { name: `Temporary participant ${name}` });
+const removeTemporary = (name = 'Fictional Guest') => fireEvent.click(within(temporaryRow(name)).getByRole('button', { name: `Remove temporary participant ${name}` }));
+
 beforeEach(() => {
   tables = { organizations: [restaurant], organization_memberships: [membership()], job_roles: [role()], employees: [employee()] };
   requests = [];
@@ -342,6 +351,7 @@ it('preserves the browser-local roster, inputs and storage through explicit sour
   fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
   await loaded(); choose();
   editWeight('13.25');
+  addTemporary();
   expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toBeVisible();
   expect(screen.queryByRole('group', { name: 'Employee Fictional Local' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('radio', { name: 'Browser-local roster' }));
@@ -351,6 +361,7 @@ it('preserves the browser-local roster, inputs and storage through explicit sour
   await loaded();
   expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
   expect(weightInput()).toHaveValue('100');
+  expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
   expect(read.mock.calls.every(([key]) => key === accountRosterKey(project, userId))).toBe(true);
   expect(write).not.toHaveBeenCalled();
   expect(localStorage.getItem(accountRosterKey(project, userId))).toBe(saved);
@@ -566,6 +577,7 @@ it('retains deselected temporary shares in this preview without including their 
 
 it.each(['account', 'project', 'restaurant'])('clears temporary weights and selection when the %s scope changes', async kind => {
   const view = render(panel()); await loaded(); choose(); editWeight('13.25');
+  addTemporary();
   let overrides = {};
   if (kind === 'account') {
     session = { ...session!, user: { ...session!.user, id: otherUser } };
@@ -577,6 +589,7 @@ it.each(['account', 'project', 'restaurant'])('clears temporary weights and sele
     overrides = { organizationId: otherOrg, restaurantName: 'Fictional Moonbeam' };
   }
   view.rerender(panel(overrides)); await loaded();
+  expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
   expect(weightInput(kind === 'restaurant' ? 'Fictional Blair' : 'Fictional Avery')).toHaveValue('100');
   expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
 });
@@ -584,6 +597,7 @@ it.each(['account', 'project', 'restaurant'])('clears temporary weights and sele
 it.each(['sign-out', 'revocation'])('clears temporary weights after %s and requires fresh defaults when access returns', async kind => {
   const ownSession = session;
   const view = render(panel()); await loaded(); choose(); editWeight('13.25');
+  addTemporary();
   if (kind === 'sign-out') act(() => emit('SIGNED_OUT', null));
   else { tables.organization_memberships = []; view.rerender(panel({ accessRevision: 1 })); }
   await screen.findByRole('alert');
@@ -592,6 +606,7 @@ it.each(['sign-out', 'revocation'])('clears temporary weights after %s and requi
   else { tables.organization_memberships = [membership()]; reload(); }
   await loaded();
   expect(weightInput()).toHaveValue('100');
+  expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
   expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
 });
 
@@ -605,4 +620,201 @@ it('preserves invalid temporary text and unavailable payouts through successful 
   expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
   expect(exactReads()).toHaveLength(1);
   expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('100');
+});
+
+it('adds multiple selected temporary participants without needing any shared employee or job role', async () => {
+  tables.job_roles = []; tables.employees = [];
+  render(panel()); await screen.findByText('No shared employees to select.');
+  const before = requests.length;
+  addTemporary(); addTemporary('Fictional Second', '25', 'Free-text visiting role');
+  expect(within(temporaryRow()).getByText('Temporary')).toBeVisible();
+  expect(within(temporaryRow()).getByRole('checkbox')).toBeChecked();
+  expect(within(temporaryRow('Fictional Second')).getByRole('checkbox')).toBeChecked();
+  expect(screen.getByRole('group', { name: 'Employee Fictional Guest' })).toHaveTextContent('Temporary');
+  expect(screen.getByText('2 participants selected for this preview.')).toBeVisible();
+  expect(screen.getByLabelText('Temporary participant name')).toHaveValue('');
+  expect(requests).toHaveLength(before);
+});
+
+it('calculates mixed shared/temporary shares, edits and excludes/reincludes/removes only the temporary entry', async () => {
+  render(panel()); await loaded(); choose(); addTemporary();
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100' } });
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$66.66');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Guest' })).toHaveTextContent('$33.33');
+  expect(screen.getByRole('group', { name: 'Unassigned Remainder' })).toHaveTextContent('+$0.01');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Round down to whole dollar' }));
+  expect(screen.getByRole('group', { name: 'Employee Fictional Guest' })).toHaveTextContent('$33.00');
+  expect(screen.getByRole('group', { name: 'Unassigned Remainder' })).toHaveTextContent('+$1.00');
+  editWeight('100', 'Fictional Guest');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Guest' })).toHaveTextContent('$50.00');
+  choose('Fictional Guest');
+  expect(weightInput('Fictional Guest')).toHaveValue('100');
+  expect(screen.queryByRole('group', { name: 'Employee Fictional Guest' })).not.toBeInTheDocument();
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$100.00');
+  choose('Fictional Guest');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Guest' })).toHaveTextContent('$50.00');
+  expect(within(screen.getByRole('group', { name: 'Shared employee Fictional Avery' })).queryByRole('button', { name: /Remove/ })).not.toBeInTheDocument();
+  removeTemporary();
+  expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$100.00');
+});
+
+it('keeps duplicate shared and temporary display names distinct with local non-UUID identities', async () => {
+  render(panel()); await loaded();
+  addTemporary('Fictional Avery', '1'); addTemporary('Fictional Avery', '2');
+  const rows = screen.getAllByRole('group', { name: 'Temporary participant Fictional Avery' });
+  const inputs = rows.map(row => within(row).getByRole('textbox'));
+  expect(new Set(inputs.map(input => input.id)).size).toBe(2);
+  expect(inputs.every(input => input.id.includes('temporary:') && !input.id.includes(id(6)))).toBe(true);
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '3' } });
+  const payouts = screen.getAllByRole('group', { name: 'Employee Fictional Avery' });
+  expect(payouts[0]).toHaveTextContent('$1.00'); expect(payouts[1]).toHaveTextContent('$2.00');
+  fireEvent.click(within(rows[0]).getByRole('button', { name: /Remove temporary/ }));
+  expect(screen.getAllByRole('group', { name: 'Temporary participant Fictional Avery' })).toHaveLength(1);
+  expect(screen.getByRole('group', { name: 'Shared employee Fictional Avery' })).toBeVisible();
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$3.00');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it.each(['', '-1', '1.001', '1e2', '90071992547409.92'])('refuses invalid initial temporary weight %j without creating a selected participant', async value => {
+  render(panel()); await loaded(); choose();
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100' } });
+  addTemporary('Fictional Guest', value);
+  expect(within(screen.getByRole('form', { name: 'Add temporary participant' })).getByRole('alert')).toBeVisible();
+  expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$100.00');
+});
+
+it.each(['', '-1', '0.001', '90071992547409.92'])('invalid selected temporary edit %j blocks all payouts until excluded or removed', async value => {
+  render(panel()); await loaded(); choose(); addTemporary();
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100' } });
+  editWeight(value, 'Fictional Guest');
+  expect(weightInput('Fictional Guest')).toHaveValue(value);
+  expect(weightInput('Fictional Guest')).toHaveAttribute('aria-invalid', 'true');
+  expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
+  expect(screen.getAllByRole('alert').some(alert => alert.textContent?.includes('Fictional Guest'))).toBe(true);
+  choose('Fictional Guest');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$100.00');
+  choose('Fictional Guest');
+  expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
+  removeTemporary();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$100.00');
+});
+
+it('supports explicit zero, exact maximum temporary shares, and mixed selected-total overflow', async () => {
+  render(panel()); await loaded(); addTemporary('Fictional Zero', '0');
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100.01' } });
+  expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('$0.00');
+  expect(screen.getByRole('group', { name: 'Unassigned Remainder' })).toHaveTextContent('+$100.01');
+  addTemporary('Fictional Maximum', '90071992547409.91');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Maximum' })).toHaveTextContent('$100.01');
+  choose(); // The shared 100-share employee makes the selected sum unsafe.
+  expect(screen.getByRole('alert')).toHaveTextContent('Total weight units exceeds the safe integer range');
+  expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
+  choose();
+  expect(screen.getByRole('group', { name: 'Employee Fictional Maximum' })).toHaveTextContent('$100.01');
+});
+
+it('preserves temporary entries, exclusion, edited text and an open form during minute/focus/Auth access checks', async () => {
+  vi.useFakeTimers();
+  render(<SharedRoster client={client} userId={userId} calculationMode />);
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  addTemporary(); addTemporary('Fictional Second', '0.29');
+  editWeight('0.58', 'Fictional Guest');
+  choose('Fictional Second');
+  fireEvent.change(screen.getByLabelText('Temporary participant name'), { target: { value: 'Fictional draft' } });
+  for (const action of ['focus', 'minute', 'auth']) {
+    await act(async () => {
+      if (action === 'focus') window.dispatchEvent(new Event('focus'));
+      if (action === 'auth') emit('TOKEN_REFRESHED', { ...session!, access_token: 'fictional-new-token' });
+      await vi.advanceTimersByTimeAsync(action === 'minute' ? 60_000 : 0);
+    });
+    expect(weightInput('Fictional Guest')).toHaveValue('0.58');
+    expect(within(temporaryRow()).getByRole('checkbox')).toBeChecked();
+    expect(within(temporaryRow('Fictional Second')).getByRole('checkbox')).not.toBeChecked();
+    expect(screen.getByLabelText('Temporary participant name')).toHaveValue('Fictional draft');
+  }
+  expect(exactReads()).toHaveLength(1);
+});
+
+it('explicit reload clears temporary entries, weights, selections and unsaved form values', async () => {
+  render(panel()); await loaded(); choose(); addTemporary();
+  editWeight('25', 'Fictional Guest');
+  fireEvent.change(screen.getByLabelText('Temporary participant name'), { target: { value: 'Fictional draft' } });
+  reload(); await loaded();
+  expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
+  expect(within(participating()).getAllByRole('checkbox')).toHaveLength(1);
+  expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
+  expect(screen.getByLabelText('Temporary participant name')).toHaveValue('');
+});
+
+it('allows additions only in a verified scope and disables a retained form while access is checking', async () => {
+  const late = deferred<Response>();
+  intercept = request => request.table === 'employees' ? late.promise : undefined;
+  const view = render(panel());
+  await waitFor(() => expect(exactReads()).toHaveLength(1));
+  expect(screen.queryByRole('button', { name: 'Add temporary participant' })).not.toBeInTheDocument();
+  await act(async () => late.resolve(response([employee()])));
+  await loaded();
+  const form = screen.getByRole('form', { name: 'Add temporary participant' });
+  fireEvent.change(screen.getByLabelText('Temporary participant name'), { target: { value: 'Fictional pending' } });
+  fireEvent.change(screen.getByLabelText('Job title / role label'), { target: { value: 'Fictional role' } });
+  fireEvent.change(screen.getByLabelText('Initial share weight'), { target: { value: '1' } });
+  view.rerender(panel({ accessPending: true }));
+  fireEvent.submit(form);
+  view.rerender(panel({ accessPending: false }));
+  expect(screen.queryByRole('group', { name: 'Temporary participant Fictional pending' })).not.toBeInTheDocument();
+  tables.organization_memberships = [];
+  view.rerender(panel({ accessRevision: 1 }));
+  await screen.findByRole('alert');
+  expect(screen.queryByRole('button', { name: 'Add temporary participant' })).not.toBeInTheDocument();
+});
+
+it('never mutates storage or requests shared writes when adding, editing, excluding and removing temporary entries', async () => {
+  render(panel()); await loaded();
+  const write = vi.spyOn(Storage.prototype, 'setItem'), remove = vi.spyOn(Storage.prototype, 'removeItem');
+  const clear = vi.spyOn(Storage.prototype, 'clear');
+  const before = requests.length;
+  addTemporary(); editWeight('12.25', 'Fictional Guest'); choose('Fictional Guest'); removeTemporary();
+  expect(requests).toHaveLength(before);
+  expect(write).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled(); expect(clear).not.toHaveBeenCalled();
+});
+
+it('provides labelled mobile fields and keyboard submission, with required free-text name/title validation', async () => {
+  render(panel()); await loaded();
+  addTemporary(' ', '1', 'Fictional role');
+  expect(within(screen.getByRole('form', { name: 'Add temporary participant' })).getByRole('alert')).toHaveTextContent('Enter a name');
+  addTemporary('Fictional Guest', '1', ' ');
+  expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Temporary participant name'), { target: { value: '  Fictional Guest  ' } });
+  fireEvent.change(screen.getByLabelText('Job title / role label'), { target: { value: '  Fictional visiting role  ' } });
+  const input = screen.getByLabelText('Initial share weight');
+  expect(input).toHaveAttribute('inputmode', 'decimal');
+  expect(input).toHaveAttribute('type', 'text');
+  expect(input).toHaveClass('min-h-12', 'text-base');
+  input.focus(); await userEvent.keyboard('{Enter}');
+  expect(temporaryRow()).toHaveTextContent('Fictional visiting role');
+  expect(within(temporaryRow()).getByRole('button', { name: /Remove temporary participant/ })).toHaveClass('min-h-12');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('rejects stale addition and weight events in the same turn as sign-out without restoring temporary data', async () => {
+  const ownSession = session;
+  render(panel()); await loaded(); choose(); addTemporary();
+  const input = weightInput(), form = screen.getByRole('form', { name: 'Add temporary participant' });
+  fireEvent.change(screen.getByLabelText('Temporary participant name'), { target: { value: 'Fictional stale' } });
+  fireEvent.change(screen.getByLabelText('Job title / role label'), { target: { value: 'Fictional role' } });
+  fireEvent.change(screen.getByLabelText('Initial share weight'), { target: { value: '1' } });
+  act(() => {
+    emit('SIGNED_OUT', null);
+    fireEvent.change(input, { target: { value: '17' } });
+    fireEvent.submit(form);
+  });
+  await screen.findByRole('alert');
+  act(() => emit('SIGNED_IN', ownSession)); await loaded();
+  expect(screen.queryByRole('group', { name: /Temporary participant Fictional (Guest|stale)/ })).not.toBeInTheDocument();
+  expect(weightInput()).toHaveValue('100');
+  expect(within(participating()).getAllByRole('checkbox')).toHaveLength(1);
+  expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
 });
