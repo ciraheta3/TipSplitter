@@ -69,7 +69,7 @@ async function verify(client: SupabaseClient, userId: string, signal: AbortSigna
   if (current.error || current.data.session?.access_token !== session.access_token || current.data.session?.user.id !== userId) throw new RosterEditError(denied);
 }
 
-async function access(client: SupabaseClient, userId: string, org: string, signal: AbortSignal) {
+export async function verifyRosterAccess(client: SupabaseClient, userId: string, org: string, signal: AbortSignal) {
   await verify(client, userId, signal);
   uuid(org); uuid(userId);
   const rows = checkedRows(await client.from('organization_memberships')
@@ -84,7 +84,7 @@ async function access(client: SupabaseClient, userId: string, org: string, signa
 export async function loadEditingRoster(client: SupabaseClient, userId: string, org: string, signal: AbortSignal): Promise<EditSnapshot> {
   const loadedAt = performance.now();
   const wallAt = Date.now();
-  await access(client, userId, org, signal);
+  await verifyRosterAccess(client, userId, org, signal);
   const [roles, employees] = await Promise.all([
     client.from('job_roles').select(roleProjection, { count: 'exact' }).eq('organization_id', org).order('name').order('id').range(0, 999).abortSignal(signal).retry(false).returns<unknown[]>(),
     client.from('employees').select(employeeProjection, { count: 'exact' }).eq('organization_id', org).order('name').order('id').range(0, 999).abortSignal(signal).retry(false).returns<unknown[]>(),
@@ -95,7 +95,7 @@ export async function loadEditingRoster(client: SupabaseClient, userId: string, 
     if (new Set(result.roles.map(row => row.id)).size !== result.roles.length
       || new Set(result.employees.map(row => row.id)).size !== result.employees.length
       || result.employees.some(row => !result.roles.some(r => r.id === row.default_role_id))) throw new RosterEditError(invalid);
-    await access(client, userId, org, signal);
+    await verifyRosterAccess(client, userId, org, signal);
     return result;
   } catch (error) { throw error instanceof RosterEditError ? error : new RosterEditError(invalid); }
 }
@@ -124,7 +124,7 @@ export async function saveRosterDraft(client: SupabaseClient, userId: string, or
       ? { name, default_weight: sharedWeightInput(draft.weight), is_active: draft.active }
       : { name, default_role_id: uuid(draft.roleId), default_weight_override: sharedOverrideInput(draft.weight), is_active: draft.active };
   } catch { throw new RosterEditError('Use a nonnegative share weight up to 90071992547409.91 with at most two decimal places. Leave an employee override blank to inherit.', false); }
-  await access(client, userId, org, signal);
+  await verifyRosterAccess(client, userId, org, signal);
   if (draft.kind === 'employee') {
     const selected = snapshot.roles.find(row => row.id === draft.roleId);
     const unchanged = target && 'default_role_id' in target && target.default_role_id === draft.roleId;
@@ -164,7 +164,7 @@ export async function saveRosterDraft(client: SupabaseClient, userId: string, or
     const saved = draft.kind === 'role' ? role(result.data[0], org) : employee(result.data[0], org);
     if ((target && (saved.id !== target.id || saved.xmin === target.xmin))
       || Object.entries(body).some(([key, value]) => record(result.data![0])[key] !== value)) throw new Error();
-    await access(client, userId, org, signal);
+    await verifyRosterAccess(client, userId, org, signal);
     return saved;
   } catch { throw new RosterEditError(uncertain, true, true); }
 }

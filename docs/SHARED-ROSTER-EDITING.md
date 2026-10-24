@@ -1,9 +1,9 @@
-# Shared roster editing (Issue #38 feature branch)
+# Shared roster editing (merged PR #39)
 
-This proposed change starts from fetched `main` at `a8c204f`, including merged
+PR #39 started from fetched `main` at `a8c204f`, including merged
 PR #37. It adds **Manage shared roster · DEV** beneath the selected restaurant's
-summary. It is not merged or deployed. Independent review and owner Mac/DEV testing
-remain required. Issue #36 and its private fixtures/plans are independent work.
+summary. It is now merged. The historical evidence below does not establish
+new owner Mac/DEV acceptance. Issue #36 and its private fixtures/plans are independent work.
 
 Active same-restaurant admins and closers can add/edit/activate/deactivate job roles
 and employees using existing column-limited INSERT/UPDATE grants and tenant RLS.
@@ -14,8 +14,9 @@ migrations, Auth helpers, provisioning tool, original security verifiers and CI
 workflow are unchanged.
 
 The browser-local calculator, account/legacy storage and integer-cent engine are
-unchanged. Shared rows never become shift participants or calculator inputs. Default
-share weights are mutable roster metadata, not percentages or historical facts.
+unchanged by PR #39. Issue #42 on this branch adds a separate
+[temporary shared calculator preview](SHARED-ROSTER-CALCULATOR.md); no saved shift
+participants or payments are created. Default share weights are mutable roster metadata, not percentages or historical facts.
 
 ## Exact wire contract and evidence
 

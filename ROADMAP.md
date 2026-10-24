@@ -1,10 +1,10 @@
 # TipSplitter roadmap
 
-The merged baseline through PR #37 offers a browser-local tip allocation preview,
+The merged baseline through PR #39 offers a browser-local tip allocation preview,
 optional DEV authentication, tenant-scoped roster schema/authorization, a separate
-read-only shared roster and offline owner-controlled DEV provisioning. Issue #38
-proposes shared roster editing on this feature branch; no hosted action or
-deployment is performed. [SPEC.md](SPEC.md) defines the calculation contract;
+shared roster with scoped default editing and offline owner-controlled DEV
+provisioning. Issue #42 adds a read-only shared calculator preview on this branch;
+no hosted action or deployment is performed. [SPEC.md](SPEC.md) defines the calculation contract;
 [docs/PRD.md](docs/PRD.md) records product direction and open business decisions.
 
 ## Completed
@@ -26,18 +26,19 @@ The following milestones are merged into `main`:
 PR #37 also merged [offline owner-controlled DEV provisioning](docs/DEV-PROVISIONING.md)
 with private plans, guarded SQL generation and disposable tests. No hosted execution
 or production administration is supplied. These merged milestones do not provide
-shared editing, a financial ledger or a production-ready service.
+a financial ledger or a production-ready service. PR #39 merged scoped shared
+roster editing with exact decimal transport under existing grants/RLS.
 
 ## In progress
 
-- **Issue #38 — scoped shared roster editing:** proposed [management forms and typed write adapter](docs/SHARED-ROSTER-EDITING.md), exact numeric text/string transport, NULL/zero defaults and short-lived xmin conflict checks under existing grants/RLS. Real local Auth/PostgREST component evidence passed; full CLI startup timed out. Review, Mac/full-stack and owner DEV acceptance remain pending; Issue #36 stays independent. No calculator integration or security migration.
+- **Issue #42 — shared roster calculator bridge:** explicit local/shared source, existing authorized restaurant selector, exact-unit in-memory snapshot and temporary participant checkboxes. See [design and owner acceptance](docs/SHARED-ROSTER-CALCULATOR.md). No persistence, shifts, payments, migrations or financial-policy changes. PR #39's editing evidence remains separate; owner Mac/iPad acceptance of this bridge is pending.
 
 ## Planned
 
 No delivery dates are committed. Each milestone needs separate scope and review:
 
 1. **Production trusted account lifecycle:** invitations, account changes, audited revocation and recovery through a separately approved architecture; Issue #35 supplies only an offline synthetic DEV foundation.
-2. **Shared roster synchronization/import:** Issue #38 scopes in-app defaults only. Persistent/offline synchronization, import and durable conflict/history protocols need separate review.
+2. **Shared roster synchronization/import:** PR #39 scopes in-app defaults; Issue #42 adds memory-only previews. Persistent/offline synchronization, import and durable conflict/history protocols need separate review.
 3. **Shifts and immutable history:** lunch/dinner participation, finalization, immutable collected-total and actual-payout snapshots, and correction/audit rules.
 4. **Adjustments and reconciliation:** early departure and understaffing after interaction rules are agreed; preserve true collected totals and recorded payouts.
 5. **Reporting and export:** scope manager reports, exports, and any staff-facing baseline worksheets separately from fiscal records.

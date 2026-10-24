@@ -1,11 +1,11 @@
 # Restaurant Tip Pool Manager
 
-## Proposed shared default management (Issue #38 feature branch)
+## Shared default management (merged PR #39)
 
 The [scoped editing design](SHARED-ROSTER-EDITING.md) implements the approved admin/
 closer V1 roster permissions under existing RLS/column ACLs, with exact decimal
-text/string transport and bounded xmin conflict checks. It remains proposed,
-unmerged and undeployed. No shifts, payout inputs, synchronization, import or
+text/string transport and bounded xmin conflict checks. PR #39 is merged.
+No shifts, payout inputs, synchronization, import or
 historical facts are created by shared default edits.
 
 Interim UI decisions: new employee assignments require an active same-restaurant
@@ -17,6 +17,51 @@ an open product/security decision; the current rule is a conservative UI check.
 One-minute drafts and transaction tokens are not a durable offline/sync protocol.
 Independent Mac/full-stack and owner-only DEV acceptance remain pending and separate
 from Issue #36. No hosted fixture or private owner work was accessed.
+
+## Shared-roster calculator V1 (Issue #42, this branch)
+
+The [read-only bridge](SHARED-ROSTER-CALCULATOR.md) offers explicit browser-local
+and restaurant-shared calculation sources. Reuse the authorized restaurant selector;
+display the restaurant throughout selection and preview. Shared rows never overwrite,
+merge into or persist in the local roster. A snapshot starts with no participants;
+checkboxes affect only this temporary preview, never employee activation/defaults.
+
+Initial eligibility is conservative: **both employee and associated role must be
+active at explicit load time**. Inactive rows remain visible with a reason and
+cannot be selected. An active employee's explicit zero weight remains selectable.
+NULL inherits the role default; non-NULL (including zero) uses the employee default.
+Selected employees may use a temporary per-calculation share weight instead of
+that loaded default. Inputs are exact decimal text in React memory, labelled as
+relative share weights (not tip percentages), with the permanent default beside
+them. Individual Reset restores the loaded default; this never writes to Supabase
+or localStorage. No saved-shift override precedence is defined.
+
+Within a successfully verified restaurant scope, **Add temporary participant**
+creates a memory-only entry with a name, free-text role label and manually entered
+share weight; no permanent role or employee is required. Valid additions start
+selected, are visibly Temporary, and support weight editing, inclusion/exclusion
+and local removal. Duplicate names use distinct local IDs. There is no save-to-roster
+option. The same exact parsing, invalid-selected-weight block and financial engine
+apply to mixed shared/temporary participants.
+
+Successful routine access checks preserve the snapshot/selection/inputs. Shared
+edits, including activation changes, do not silently change a running preview.
+Explicit reload replaces the snapshot, resets temporary weights to the latest
+verified defaults and clears selections. Leaving shared mode, scope changes,
+sign-out or failed verification clears temporary edits, one-time participants and
+addition drafts. Explicit reload also clears one-time entries; successful routine
+checks preserve entries and drafts while hiding/disabling addition during checking.
+Deselecting excludes an
+employee immediately; reselecting during the same preview retains their text.
+Invalid selected weights block all payout previews without a default/previous-value
+fallback; invalid unselected inputs do not affect allocation. No shift or payment
+is saved.
+
+**Owner decisions remain open:** approve the initial active-pair eligibility rule;
+decide whether future shifts may include retired employees/roles and how mid-preview
+activation/default changes should be handled in a saved-shift product. Shift
+participation across lunch/dinner, overrides, adjustments, leftover recipients,
+finalization and actual payments are unchanged unresolved decisions.
 
 ## Product direction
 

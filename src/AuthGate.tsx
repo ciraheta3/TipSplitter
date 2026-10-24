@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import Calculator from './Calculator';
 import SharedRoster from './SharedRoster';
 import { accountRosterKey } from './supabase';
@@ -19,13 +20,26 @@ export default function AuthGate({ runtime }: { runtime: Extract<AuthRuntime, { 
         <div><p className="font-semibold">TipSplitter · DEV preview</p><p className="text-sm break-all">Signed in as {auth.user.email ?? 'verified user'}</p></div>
         <button className={buttonClass} onClick={() => void auth.signOut()} disabled={auth.busy}>Sign out</button>
       </header>
-      <p className="bg-blue-50 p-4 text-center text-sm">Signing in does not grant restaurant membership. This calculator uses your browser-local preview roster only.</p>
-      <SharedRoster key={`shared:${storageKey}`} client={runtime.client} userId={auth.user.id} />
-      <Calculator key={storageKey} storageKey={storageKey} />
+      <p className="bg-blue-50 p-4 text-center text-sm">Signing in does not grant restaurant membership. Choose the calculation source explicitly; all calculations are temporary previews.</p>
+      <SignedInPreview key={storageKey} client={runtime.client} userId={auth.user.id} storageKey={storageKey} />
     </>;
   }
 
   return <LoginScreen auth={auth} />;
+}
+
+function SignedInPreview({ client, userId, storageKey }: { client: SupabaseClient; userId: string; storageKey: string }) {
+  const [source, setSource] = useState('local');
+  return <>
+    <fieldset className="max-w-6xl mx-auto p-4 space-y-2">
+      <legend className="font-bold">Calculation source</legend>
+      <label className="flex items-center gap-3 min-h-12"><input type="radio" name="calculation-source" checked={source === 'local'} onChange={() => setSource('local')} />Browser-local roster</label>
+      <label className="flex items-center gap-3 min-h-12"><input type="radio" name="calculation-source" checked={source === 'shared'} onChange={() => setSource('shared')} />Restaurant shared roster</label>
+      <p className="text-sm">Switching sources keeps your local roster and inputs. Leaving shared mode clears its temporary preview.</p>
+    </fieldset>
+    <SharedRoster client={client} userId={userId} calculationMode={source === 'shared'} />
+    <div hidden={source !== 'local'}><Calculator storageKey={storageKey} /></div>
+  </>;
 }
 
 function LoginScreen({ auth }: { auth: ReturnType<typeof useAuth> }) {
@@ -34,7 +48,7 @@ function LoginScreen({ auth }: { auth: ReturnType<typeof useAuth> }) {
   return <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
     <section className="w-full max-w-md bg-white rounded-xl border border-gray-200 shadow-sm p-8 space-y-5" aria-labelledby="login-title">
       <div><p className="text-sm font-semibold text-blue-700">TipSplitter · DEV</p><h1 id="login-title" className="text-2xl font-bold mt-2">Sign in to your preview</h1></div>
-      <p className="text-sm text-gray-600">Use an existing development account. Your roster stays in this browser and is not synchronized to Supabase.</p>
+      <p className="text-sm text-gray-600">Use an existing development account. Your browser-local roster stays separate from authorized restaurant shared records.</p>
       {auth.error && <p role="alert" className="text-sm text-red-700">{auth.error}</p>}
       {auth.signOutFailed ? <button className={buttonClass} disabled={auth.busy} onClick={() => void auth.signOut()}>{auth.busy ? 'Signing out…' : 'Retry sign-out'}</button> :
         <form className="space-y-4" onSubmit={event => {

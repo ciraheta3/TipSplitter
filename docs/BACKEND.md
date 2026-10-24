@@ -1,6 +1,6 @@
 # Roster schema and authorization (Issues #14 and #21)
 
-The Issue #38 feature branch proposes [shared roster editing](SHARED-ROSTER-EDITING.md)
+Merged PR #39 adds [shared roster editing](SHARED-ROSTER-EDITING.md)
 under these unchanged migrations, grants and RLS. Exact numeric text/string and
 short-lived `xmin` checks passed against actual local Auth/PostgREST components;
 full CLI startup timed out, so managed-stack/Mac/owner acceptance remains pending.
@@ -11,11 +11,13 @@ security (RLS). Supabase is the intended managed PostgreSQL/Auth platform for th
 future shared application. The migrations use Supabase API role names and reference
 its managed Auth identities.
 The migrations create no hosted project or frontend application-table connection.
-The app now has optional DEV Auth; calculator rosters remain browser-local. The
+The app has optional DEV Auth; browser-local rosters remain separate from shared records. The
 optional local integration harness exercises actual Auth and REST APIs. Merged
 PR #34 (Issue #31) adds a separate [read-only frontend roster](SHARED-ROSTER.md) using the existing four
 tables, SELECT grants and RLS. It neither changes this security model
-nor supplies provisioning or exact numeric transport. The calculator stays local.
+nor supplies provisioning or exact numeric transport. PR #39 adds exact-text defaults;
+Issue #42 on this branch adds a [read-only shared calculator bridge](SHARED-ROSTER-CALCULATOR.md)
+using the same existing grants/RLS, with no migrations or preview writes.
 
 ## Entities and tenant boundary
 
@@ -57,12 +59,13 @@ valid. A `NULL` employee override means inherit the role's default; an override 
 `0` explicitly means zero shares. Use `COALESCE(employee.default_weight_override,
 role.default_weight)` for the roster default, never a truthiness test.
 
-A future adapter must retrieve exact decimal **text** (e.g. an authorized SQL/API
-projection casting numeric to text) and use the existing `parseWeightInput` before
+The shared calculation adapter retrieves exact decimal **text** (e.g. an authorized SQL/API
+projection casting numeric to text) and uses the existing `parseWeightInput` before
 creating a numeric `weightUnits` value. Do not route large decimals through JSON
 floating-point numbers or multiply JavaScript decimal numbers by 100. The schema
 ensures individual weights fit; the existing engine must still validate the sum of
-participant units. This PR does not implement that adapter or change the engine.
+participant units. It uses `parseWeightInput` directly and retains integer units, bypassing the legacy
+numeric displayed-weight storage shape. The allocation engine is unchanged.
 
 Required names are trimmed, nonblank text with bounded lengths (100 characters for
 roles, 160 for organizations/employees). Unicode names and duplicate employee names
