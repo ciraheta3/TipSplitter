@@ -124,6 +124,7 @@ history, adjustments, reporting/export and launch hardening remain future work.
 - [Backend foundation](docs/BACKEND.md): schema, access boundaries, migration checks, and future integration requirements.
 - [Offline DEV provisioning](docs/DEV-PROVISIONING.md): private plans, SQL guards, owner worksheet and separate cleanup.
 - [DEV authentication](docs/AUTH.md): frontend configuration, architecture, manual login/logout checklist and cleanup.
+- [Scroll stability investigation](docs/SCROLL-STABILITY.md): v0.1.1 rendering fix, synthetic browser evidence and native iPad acceptance.
 - [Interface tests](docs/UI-TESTS.md): test commands, coverage, limitations, and browser smoke checks.
 - [Contribution guidance](AGENTS.md): repository engineering and verification requirements.
 

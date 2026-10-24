@@ -77,16 +77,17 @@ See [PRD eligibility and open owner decisions](PRD.md).
   Any selected field error blocks the entire payout preview before calling the
   engine; selected-total overflow remains the engine's existing check.
   `src/calculation.ts` is unchanged.
-- Routine access checks hide the shared preview while checking and preserve its
-  fixed defaults, selections and temporary weights/input only on success.
+- Routine access checks hide the shared preview with visibility/inert while retaining
+  its layout space and DOM; successful checks preserve fixed defaults, selections
+  and temporary weights/input.
   Refresh/focus/visibility,
   network events and the existing minute timer check access; they do not silently
   import new defaults. Auth events abort current reads; account changes clear data.
   Explicit reload, mode exit, failed access and scope/client/restaurant changes
   discard temporary weights, one-time participants and addition drafts. Routine
   successful checks preserve even invalid text.
-  The addition form is hidden/disabled while checking access; it is available only
-  after successful complete roster verification, and successful checks preserve
+  The addition form retains its layout space and is hidden/disabled while checking
+  access; it is available only after successful complete roster verification, and successful checks preserve
   its draft without allowing an addition during the check. Prop changes remount
   the scope. Late responses cannot restore it.
 
@@ -158,3 +159,6 @@ credentials, employee fixtures or browser exports.
 
 Codex has not performed hosted Supabase or Mac/iPad browser verification. This work
 does not publish a preview, provision accounts or modify the owner's existing DEV data.
+
+For the v0.1.1 layout-collapse investigation, browser evidence and a credential-free
+iPad acceptance fixture, see [scroll stability](SCROLL-STABILITY.md).
