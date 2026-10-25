@@ -490,3 +490,46 @@ roster harness tests, ESLint, TypeScript and the Vite production build.
 verification so the hidden shared preview is rechecked without waiting for the
 minute timer. Native iPad Safari, database and real Auth/PostgREST checks were not
 run for this frontend change; hosted DEV was not accessed.
+
+### Management organization and inline editing (PR #52 follow-up)
+
+Job roles and Employees have separate headings with prominent **Add role** and
+**Add employee** buttons aligned at the top of the management sections on tablet
+layouts. Roles are alphabetized with their exact default weights and status.
+Employees are grouped by permanent default role ID; groups and names are sorted
+alphabetically with ID tie breakers. Each group starts collapsed and shows its
+employee count, including inactive employees. Inactive roles and employees remain
+labelled and editable under the same permissions. Duplicate employee names show
+IDs and have distinct accessible Edit labels. Calculator grouping is unchanged.
+
+Add forms appear immediately beneath their button; edit forms appear directly
+under the selected record, inside its employee group where applicable. Opening a
+form focuses its name field and requests only the nearest necessary scroll.
+Only one editor can be opened: finish or cancel it before choosing another record.
+The group containing an employee draft cannot collapse; other groups can toggle
+independently. Successful access checks retain the same mounted form. A conflicting
+background reassignment/removal keeps the original draft anchored until explicit
+cancellation; it does not rebase or discard input. After a confirmed employee save
+and verified refresh, the destination group opens to reveal the saved record.
+
+Snapshot expiry/revalidation, xmin conflict checks, exact decimal transport,
+NULL inheritance versus explicit zero, authorization, revocation and interrupted
+save recovery continue through the existing manager and adapter. No permanent
+employee deletion, database change or new backend operation is added.
+
+Additional owner iPad Safari checks remain pending: in landscape and portrait,
+confirm both section/add controls are easy to locate, group headers and forms fit
+without horizontal overflow, and keyboard/VoiceOver focus and nearest scrolling
+work with a fictional roster of about 49 employees. Exercise all four inline form
+placements, group collapse protection, cancellation/Back guards, creation, editing,
+reassignment and save feedback. The owner's earlier discovery of Add employee was
+a layout observation, not a verified creation failure or a manual creation pass.
+
+Follow-up verification: `npm run check` passed 419 frontend tests in eight files
+(including 99 management tests), 14 offline provisioning checks, 41 offline roster
+harness tests, ESLint, TypeScript and the Vite build on Linux / Node 24.19.0 /
+npm 11.9.0. Seven new management regressions use a fictional 49-employee roster;
+existing tests now open collapsed groups explicitly and use the concise add labels.
+`git diff --check` passed. These are mocked React/SDK and offline checks, not native
+iPad Safari or live Auth/PostgREST/RLS verification. No hosted DEV was accessed and
+nothing was deployed.

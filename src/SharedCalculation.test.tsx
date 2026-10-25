@@ -1143,7 +1143,7 @@ it.each(['revoked', 'failed', 'sign-out', 'reload'] as const)('clears inline exc
 
 async function enterManagement() {
   fireEvent.click(await screen.findByRole('button', { name: 'Manage roster' }));
-  await screen.findByRole('button', { name: 'Add shared job role' });
+  await screen.findByRole('button', { name: 'Add role' });
   expect(screen.getByRole('heading', { name: 'Manage roster' })).toHaveFocus();
   expect(screen.queryByRole('group', { name: 'Calculation source' })).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Tip Calculator Dashboard' })).not.toBeInTheDocument();
@@ -1176,7 +1176,7 @@ it.each(['local', 'shared'])('returns from management to the same mounted %s cal
   await enterManagement();
   // A routine parent check must still verify the hidden calculator without reloading defaults.
   fireEvent(window, new Event('focus'));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Add shared job role' })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add role' })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
   expect(screen.getByRole('radio', { name: source === 'shared' ? 'Restaurant shared roster' : 'Browser-local roster' })).toBeChecked();
   expect(screen.getByRole('textbox', { name: 'Cash Tips ($)' })).toBe(cash);
@@ -1203,7 +1203,7 @@ it.each(['revoked', 'failed', 'offline'])('clears the hidden shared calculation 
   if (kind === 'offline') vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
   fireEvent(window, new Event(kind === 'offline' ? 'offline' : 'focus'));
   await waitFor(() => expect(oldPreview).not.toBeInTheDocument());
-  expect(screen.queryByRole('button', { name: 'Add shared employee' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Add employee' })).not.toBeInTheDocument();
   expect(screen.queryByText('Fictional Avery · Active')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
   if (kind === 'offline') vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
@@ -1220,7 +1220,7 @@ it.each(['SIGNED_OUT', 'SIGNED_IN'] as const)('clears management and hidden prev
   await screen.findByRole('button', { name: 'Manage roster' });
   fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
   await loaded(); choose(); addTemporary(); await enterManagement();
-  fireEvent.click(screen.getByRole('button', { name: 'Add shared job role' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add role' }));
   fireEvent.change(screen.getByLabelText('Shared role name'), { target: { value: 'Fictional private draft' } });
   act(() => emit(event, event === 'SIGNED_OUT' ? null : { ...session!, user: { ...session!.user, id: otherUser } }));
   expect(screen.queryByRole('form', { name: 'Add shared job role' })).not.toBeInTheDocument();
@@ -1262,7 +1262,7 @@ it('a failed independent management verification rechecks and clears the hidden 
   fireEvent.click(screen.getByRole('button', { name: 'Manage roster' }));
   await screen.findByText('No restaurant access assigned');
   expect(preview).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Add shared employee' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Add employee' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
   expect(screen.queryByRole('region', { name: 'Shared calculation preview' })).not.toBeInTheDocument();
 });
