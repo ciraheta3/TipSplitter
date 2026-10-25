@@ -88,6 +88,10 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
   const calculationEmployees = employees ? [...employees, ...temporary] : [];
   const groups = groupCalculationParticipants(calculationEmployees);
   const selectedEmployees = calculationEmployees.filter(employee => employee.eligible && selected.has(employee.id));
+  // Display rows retain exact text even when no valid financial participant exists.
+  const selectedRows = selectedEmployees.map(({ id, name, jobTitle, roleId, isTemporary, weightText }) => ({
+    id, name, jobTitle, roleId, isTemporary, weightText: weightInputs.get(id) ?? weightText,
+  }));
   const participants: CalculationParticipant[] = [];
   const weightErrors = new Map<string, string>();
   for (const employee of calculationEmployees) {
@@ -215,7 +219,17 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
         </RoleSection>)}
       </fieldset>
     </>}
-    {!state.error && <Calculator storageKey="" shared={{ participants, restaurantName, unavailable: !employees, validationError }} />}
+    {!state.error && <Calculator storageKey="" shared={{ participants, selectedRows, restaurantName, unavailable: !employees, validationError,
+      exclusionDisabled: blocked,
+      onExclude: id => {
+        if (!canEdit() || !selectedEmployees.some(employee => employee.id === id)) return;
+        setSelected(previous => {
+          const next = new Set(previous);
+          next.delete(id);
+          return next;
+        });
+      },
+    }} />}
     </div>
   </section>;
 }

@@ -191,3 +191,53 @@ now has 50 synthetic employees across five roles. Start with its collapsed heade
 then open the roles needed for the existing acceptance steps. Native iPad Safari
 landscape/portrait acceptance is still required; automated Chromium checks do not
 establish Safari behavior.
+
+## Inline exclusion (Issue #47)
+
+Each selected shared or temporary participant has a 48 × 48px minimum **×** button
+in the results, named **Exclude <name> from calculation**. Duplicate names include
+role, temporary status where applicable and participant ID in the accessible name.
+The action deselects that ID in the same state used by the role checkboxes and
+counts, recalculating immediately even when the role section is collapsed.
+Reselecting restores the exact edited weight text, including invalid text.
+Temporary entries remain available until **Remove temporary participant** is used.
+The browser-local calculator's separate remove action still deletes its roster row.
+
+Display-only selected rows stay visible with their current text and exclusion
+controls when a selected weight is invalid. They carry no financial weight units;
+only validated participants enter the unchanged engine, and any selected weight
+error blocks all payout, allocation, total-share and remainder figures with **—**.
+Collected tips remain visible when valid. No default or stale payout is substituted.
+During routine access checks, the retained results and exclusion controls stay
+visible and inert; buttons are also disabled and the callback checks existing
+edit authorization. Existing failure, reload and scope-clearing rules apply.
+
+Focused React coverage includes exclusion in both payout modes with collapsed
+roles, keyboard activation, edited/invalid text retention, invalid-weight recovery,
+temporary entry retention versus removal, same-name IDs, checkbox/count updates,
+pending checks and access loss, scope isolation and browser-local deletion.
+
+Pending iPad Safari manual acceptance (portrait and landscape, synthetic data only):
+
+- Select two participants, collapse their role, enter $100 and tap × in results.
+  Confirm immediate payout/remainder and role-count updates; reopen the role and
+  confirm the checkbox is unchecked. Repeat with whole-dollar rounding enabled.
+- Edit a share weight, exclude and reselect: the exact edit returns. Repeat with
+  blank and invalid text: selected rows/× remain, monetary results show **—**;
+  excluding the invalid participant restores payouts; reselecting blocks them again.
+- Add one-time entries and duplicate names. Exclude one exact row; verify only its
+  checkbox changes, its entry/edit survives, and explicit remove still deletes it.
+- Check 48px tap targets, long names, VoiceOver names and external-keyboard
+  Tab/Enter/Space operation. Observe focus after removing a row.
+- With the credential-free fixture in SCROLL-STABILITY.md, verify retained layout
+  and scroll position during a routine check and that × cannot act while pending.
+  Failed/revoked access, scope changes, reload and sign-out must clear protected
+  previews. Browser-local removal must still remove only its saved local row.
+
+Native Safari/device acceptance and real Auth/PostgREST/RLS checks are separate
+from mocked React verification; this change does not access hosted DEV.
+
+Verification on 2026-10-25 (Linux, Node 24.19.0 / npm 11.9.0): `npm run check`
+passed all 397 frontend tests (105 shared-calculation tests), 14 offline provisioning
+checks, 41 offline roster harness tests, ESLint, TypeScript and the Vite build.
+`git diff --check` passed. No database, live Supabase or native Safari checks ran.

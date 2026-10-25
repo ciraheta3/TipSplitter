@@ -45,7 +45,18 @@ function loadRoster(storageKey: string): RosterState {
   }
 }
 
-type Props = { storageKey: string; shared?: { participants: CalculationParticipant[]; restaurantName: string; unavailable: boolean; validationError?: string } };
+type Props = {
+  storageKey: string;
+  shared?: {
+    participants: CalculationParticipant[];
+    selectedRows: Omit<CalculationParticipant, 'weightUnits'>[];
+    onExclude: (id: string) => void;
+    exclusionDisabled: boolean;
+    restaurantName: string;
+    unavailable: boolean;
+    validationError?: string;
+  };
+};
 
 export default function Calculator({ storageKey, shared }: Props) {
   const [cashTip, setCashTip] = useState('');
@@ -55,8 +66,8 @@ export default function Calculator({ storageKey, shared }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const { employees } = roster;
 
-  const displayEmployees = shared ? (shared.unavailable || shared.validationError ? [] : shared.participants) : employees.map(employee => ({ ...employee, weightText: String(employee.weight), isTemporary: false }));
-  const displayGroups = shared ? groupCalculationParticipants(shared.unavailable || shared.validationError ? [] : shared.participants).filter(group => group.participants.length) : [{ id: 'local', name: '', participants: displayEmployees }];
+  const displayEmployees = shared ? (shared.unavailable ? [] : shared.selectedRows) : employees.map(employee => ({ ...employee, weightText: String(employee.weight), isTemporary: false }));
+  const displayGroups = shared ? groupCalculationParticipants(shared.unavailable ? [] : shared.selectedRows).filter(group => group.participants.length) : [{ id: 'local', name: '', participants: displayEmployees }];
   const inputPrefix = shared ? 'shared-' : '';
 
   let totalTipCents: number | undefined;
@@ -209,7 +220,7 @@ export default function Calculator({ storageKey, shared }: Props) {
             <p className="text-sm text-gray-600 mb-3">{shared ? `Restaurant shared roster · ${shared.restaurantName}. Temporary preview only; no saved shift or payment.` : 'Browser-local roster. Saved only in this browser; not synchronized to Supabase. Use fictional data for DEV testing.'}</p>
             {!shared && roster.error && <p role="alert" className="text-sm text-red-700 mb-3">{roster.error}</p>}
             {displayEmployees.length === 0 ? (
-              <p className="text-gray-400 text-center py-8">{shared ? (shared.validationError ? 'Correct the selected participants’ temporary share weights to preview payouts.' : 'No participants selected.') : 'No employees added. Roster is empty.'}</p>
+              <p className="text-gray-400 text-center py-8">{shared ? 'No participants selected.' : 'No employees added. Roster is empty.'}</p>
             ) : (
               <div className="space-y-3">
                 {displayGroups.map(group => <Fragment key={group.id}>
@@ -224,6 +235,15 @@ export default function Calculator({ storageKey, shared }: Props) {
                       <p className="font-mono font-bold text-lg text-blue-700">
                         {money(payoutsById.get(emp.id))}
                       </p>
+                      {shared && <button
+                        type="button"
+                        aria-label={`Exclude ${emp.name} from calculation${shared.selectedRows.filter(row => row.name === emp.name).length > 1 ? ` (${emp.jobTitle}${emp.isTemporary ? ', Temporary' : ''}, ID: ${emp.id})` : ''}`}
+                        disabled={shared.exclusionDisabled}
+                        onClick={() => shared.onExclude(emp.id)}
+                        className="min-h-12 min-w-12 rounded border border-red-700 text-red-800 text-xl font-bold focus-visible:outline-2 focus-visible:outline-blue-700 disabled:opacity-50"
+                      >
+                        <span aria-hidden="true">×</span>
+                      </button>}
                       {!shared && <button
                         aria-label={`Remove ${emp.name}`}
                         onClick={() => handleRemoveEmployee(emp.id)}

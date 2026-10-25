@@ -1,12 +1,13 @@
 import type { CalculationParticipant } from './sharedCalculationData';
 
 const compareText = (a: string, b: string) => a.localeCompare(b) || (a < b ? -1 : a > b ? 1 : 0);
-const comparePeople = (a: CalculationParticipant, b: CalculationParticipant) => compareText(a.name, b.name) || compareText(a.id, b.id);
+type GroupParticipant = Pick<CalculationParticipant, 'id' | 'name' | 'jobTitle' | 'isTemporary' | 'roleId'>;
+const comparePeople = (a: GroupParticipant, b: GroupParticipant) => compareText(a.name, b.name) || compareText(a.id, b.id);
 
 // Presentation only: never mutate the authorized snapshot or financial inputs.
 // Permanent rows carry their already-authorized role ID; temporary role labels
 // never determine group identity. Keep the temporary section last, even if empty.
-export function groupCalculationParticipants<T extends CalculationParticipant>(participants: readonly T[]) {
+export function groupCalculationParticipants<T extends GroupParticipant>(participants: readonly T[]) {
   const roles = new Map<string, { id: string; name: string; isTemporary: boolean; participants: T[] }>();
   const temporary = { id: 'temporary', name: 'Temporary participants', isTemporary: true, participants: [] as T[] };
   for (const participant of participants) {
