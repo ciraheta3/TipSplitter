@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import Calculator from './Calculator';
+import { groupCalculationParticipants } from './sharedCalculationGroups';
+import RoleSection from './RoleSection';
 import { loadCalculationRoster } from './sharedCalculationData';
 import { parseWeightInput } from './calculation';
 import type { CalculationParticipant, SharedCalculationEmployee } from './sharedCalculationData';
@@ -19,6 +21,7 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
   const [reload, setReload] = useState(0);
   const [authRevision, setAuthRevision] = useState(0);
   const [state, setState] = useState<State>({ checking: true });
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [weightInputs, setWeightInputs] = useState<Map<string, string>>(() => new Map());
   const [temporary, setTemporary] = useState<SharedCalculationEmployee[]>([]);
@@ -35,6 +38,7 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
       if (!session || session.user.id !== userId) {
         invalidated.current = true;
         snapshot.current = undefined;
+        setExpanded(new Set());
         setSelected(new Set());
         setWeightInputs(new Map());
         setTemporary([]);
@@ -65,6 +69,7 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
       } catch {
         if (active.signal.aborted || invalidated.current) return;
         snapshot.current = undefined;
+        setExpanded(new Set());
         setSelected(new Set());
         setWeightInputs(new Map());
         setTemporary([]);
@@ -81,6 +86,7 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
   const employees = !state.error ? state.employees : undefined;
   const canEdit = () => !blocked && !!employees && !invalidated.current && !controller.current?.signal.aborted;
   const calculationEmployees = employees ? [...employees, ...temporary] : [];
+  const groups = groupCalculationParticipants(calculationEmployees);
   const selectedEmployees = calculationEmployees.filter(employee => employee.eligible && selected.has(employee.id));
   const participants: CalculationParticipant[] = [];
   const weightErrors = new Map<string, string>();
@@ -104,6 +110,7 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
     <button className="rounded border border-blue-700 px-4 py-3 disabled:opacity-50" disabled={accessPending || state.accountChanged} onClick={() => {
       controller.current?.abort();
       snapshot.current = undefined;
+      setExpanded(new Set());
       setSelected(new Set());
       setWeightInputs(new Map());
       setTemporary([]);
@@ -122,12 +129,39 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
       }} />}
     {employees && <>
       <p role="status">{selectedEmployees.length} participants selected for this preview.</p>
-      {!calculationEmployees.length ? <p>No shared employees to select.</p> : <fieldset className="space-y-2">
+      {!employees.length && <p>No shared employees to select.</p>}
+      <fieldset className="space-y-2">
         <legend className="font-semibold">Participating employees</legend>
-        {calculationEmployees.map(employee => {
+        {groups.map(group => <RoleSection key={group.id} name={group.name}
+          selected={group.participants.filter(employee => employee.eligible && selected.has(employee.id)).length}
+          eligible={group.participants.filter(employee => employee.eligible).length}
+          expanded={expanded.has(group.id)} onToggle={() => {
+            if (!canEdit()) return;
+            setExpanded(previous => {
+              const next = new Set(previous);
+              if (next.has(group.id)) next.delete(group.id); else next.add(group.id);
+              return next;
+            });
+          }}>
+          {!group.isTemporary && <div className="flex flex-wrap gap-2">
+            <button type="button" className="min-h-12 rounded border px-4 py-2" onClick={() => {
+              if (!canEdit()) return;
+              setSelected(previous => new Set([...previous, ...group.participants.filter(employee => employee.eligible).map(employee => employee.id)]));
+            }}>Select all eligible</button>
+            <button type="button" className="min-h-12 rounded border px-4 py-2" onClick={() => {
+              if (!canEdit()) return;
+              setSelected(previous => {
+                const next = new Set(previous);
+                group.participants.forEach(employee => next.delete(employee.id));
+                return next;
+              });
+            }}>Clear selection</button>
+          </div>}
+          <div className="grid lg:grid-cols-2 gap-2">
+          {group.participants.map(employee => {
           const inputId = `${inputPrefix}-${employee.id}`;
           const error = weightErrors.get(employee.id);
-          return <div key={employee.id} role="group" aria-label={`${employee.isTemporary ? 'Temporary participant' : 'Shared employee'} ${employee.name}`} className="border rounded p-3 space-y-3 break-words">
+          return <div key={employee.id} role="group" aria-label={`${employee.isTemporary ? 'Temporary participant' : 'Shared employee'} ${employee.name}`} className="border rounded p-3 space-y-2 min-w-0 break-words">
             <label className="flex items-start gap-3 min-h-12">
               <input type="checkbox" className="mt-1 w-5 h-5 shrink-0" checked={selected.has(employee.id)} disabled={!employee.eligible}
                 onChange={event => {
@@ -177,7 +211,9 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
             </div>}
           </div>;
         })}
-      </fieldset>}
+          </div>
+        </RoleSection>)}
+      </fieldset>
     </>}
     {!state.error && <Calculator storageKey="" shared={{ participants, restaurantName, unavailable: !employees, validationError }} />}
     </div>

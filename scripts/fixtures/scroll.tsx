@@ -14,8 +14,8 @@ const listeners = new Set<(event: AuthChangeEvent, session: Session | null) => v
 const tables: Record<string, Record<string, unknown>[]> = {
   organizations: [{ id: id(2), name: 'Fictional Scroll Restaurant' }],
   organization_memberships: [{ organization_id: id(2), user_id: user.id, role: 'closer', is_active: true }],
-  job_roles: [{ id: id(3), organization_id: id(2), name: 'Fictional server', is_active: true, default_weight: '100' }],
-  employees: Array.from({ length: 50 }, (_, i) => ({ id: id(100 + i), organization_id: id(2), name: `Synthetic Employee ${String(i + 1).padStart(2, '0')}`, is_active: true, default_role_id: id(3), default_weight_override: null })),
+  job_roles: ['Bar', 'Busser', 'Host', 'Kitchen', 'Server'].map((name, index) => ({ id: id(3 + index), organization_id: id(2), name, is_active: true, default_weight: '100' })),
+  employees: Array.from({ length: 50 }, (_, i) => ({ id: id(100 + i), organization_id: id(2), name: `Synthetic Employee ${String(i + 1).padStart(2, '0')}`, is_active: true, default_role_id: id(3 + i % 5), default_weight_override: null })),
 };
 let pending: Promise<void> | undefined;
 let release = () => {};

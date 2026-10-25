@@ -10,6 +10,7 @@ import SharedRoster from './SharedRoster';
 import SharedCalculation from './SharedCalculation';
 import { calculationEmployeeProjection, calculationRoleProjection, loadCalculationRoster } from './sharedCalculationData';
 import { accountRosterKey } from './supabase';
+import { groupCalculationParticipants } from './sharedCalculationGroups';
 import { distributeTips } from './calculation';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -72,8 +73,16 @@ function makeClient(origin = project) {
 const load = (organizationId = org, signal = new AbortController().signal) => loadCalculationRoster(client, userId, organizationId, signal);
 const panel = (overrides = {}) => <SharedCalculation client={client} userId={userId} organizationId={org} restaurantName={restaurant.name} accessRevision={0} accessPending={false} {...overrides} />;
 const participating = () => screen.getByRole('group', { name: 'Participating employees' });
-async function loaded() { return screen.findByRole('group', { name: 'Participating employees' }); }
-const choose = (name = 'Fictional Avery') => fireEvent.click(within(participating()).getByRole('checkbox', { name: new RegExp(name) }));
+function expandGroups() {
+  for (const toggle of within(participating()).queryAllByRole('button', { expanded: false })) fireEvent.click(toggle);
+}
+// Legacy interaction regressions explicitly open sections before using row controls.
+async function loaded() {
+  const list = await screen.findByRole('group', { name: 'Participating employees' });
+  expandGroups();
+  return list;
+}
+const choose = (name = 'Fictional Avery') => { expandGroups(); fireEvent.click(within(participating()).getByRole('checkbox', { name: new RegExp(name) })); };
 const weightInput = (name = 'Fictional Avery') => screen.getByRole('textbox', { name: `Temporary share weight · ${name}` });
 const editWeight = (value: string, name = 'Fictional Avery') => fireEvent.change(weightInput(name), { target: { value } });
 const reload = () => fireEvent.click(screen.getByRole('button', { name: 'Reload shared roster / clear selection' }));
@@ -85,6 +94,7 @@ function addTemporary(name = 'Fictional Guest', weight = '50', jobTitle = 'Ficti
   fireEvent.change(screen.getByLabelText('Job title / role label'), { target: { value: jobTitle } });
   fireEvent.change(screen.getByLabelText('Initial share weight'), { target: { value: weight } });
   fireEvent.submit(screen.getByRole('form', { name: 'Add temporary participant' }));
+  expandGroups();
 }
 const temporaryRow = (name = 'Fictional Guest') => screen.getByRole('group', { name: `Temporary participant ${name}` });
 const removeTemporary = (name = 'Fictional Guest') => fireEvent.click(within(temporaryRow(name)).getByRole('button', { name: `Remove temporary participant ${name}` }));
@@ -103,7 +113,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); localStor
 it.each(['admin', 'closer'])('loads an authorized %s roster through exact, bounded, tenant-filtered GETs', async roleName => {
   tables.organization_memberships[0].role = roleName;
   const participants = await load();
-  expect(participants).toEqual([{ id: id(6), name: 'Fictional Avery', jobTitle: 'Fictional server', weightText: '100', weightUnits: 10000, eligible: true, exclusion: undefined }]);
+  expect(participants).toEqual([{ id: id(6), name: 'Fictional Avery', jobTitle: 'Fictional server', roleId: id(4), weightText: '100', weightUnits: 10000, eligible: true, exclusion: undefined }]);
   expect(requests.map(request => request.table)).toEqual(['organization_memberships', 'job_roles', 'employees', 'organization_memberships']);
   for (const { table, url, init } of requests) {
     expect(url.searchParams.get('organization_id')).toBe(`eq.${org}`);
@@ -218,7 +228,8 @@ it('displays inactive records and zero defaults, with only active employee/role 
   render(panel());
   await loaded();
   const boxes = within(participating()).getAllByRole('checkbox');
-  expect(boxes[0]).toBeEnabled(); expect(boxes[1]).toBeDisabled(); expect(boxes[2]).toBeDisabled();
+  expect(within(participating()).getByRole('checkbox', { name: /Fictional Avery/ })).toBeEnabled();
+  expect(boxes.filter(box => (box as HTMLInputElement).disabled)).toHaveLength(2);
   expect(screen.getByText(/Inactive employee — excluded/)).toBeVisible();
   expect(screen.getByText(/Inactive role — excluded/)).toBeVisible();
   choose();
@@ -858,6 +869,7 @@ it('provides labelled mobile fields and keyboard submission, with required free-
   expect(input).toHaveAttribute('type', 'text');
   expect(input).toHaveClass('min-h-12', 'text-base');
   input.focus(); await userEvent.keyboard('{Enter}');
+  expandGroups();
   expect(temporaryRow()).toHaveTextContent('Fictional visiting role');
   expect(within(temporaryRow()).getByRole('button', { name: /Remove temporary participant/ })).toHaveClass('min-h-12');
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -881,4 +893,141 @@ it('rejects stale addition and weight events in the same turn as sign-out withou
   expect(weightInput()).toHaveValue('100');
   expect(within(participating()).getAllByRole('checkbox')).toHaveLength(1);
   expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
+});
+
+const roleToggle = (name = 'Fictional server') => within(participating()).getByRole('button', { name: new RegExp(`^${name} \\d+ / \\d+ selected$`) });
+const rawLoaded = () => screen.findByRole('group', { name: 'Participating employees' });
+
+it('initially collapses every section for a 49-person roster, including temporary participants', async () => {
+  tables.job_roles.push({ ...role(), id: id(5), name: 'Bar' });
+  tables.employees = Array.from({ length: 49 }, (_, index) => ({ ...employee(), id: id(100 + index), name: `Fictional Person ${index}`, default_role_id: id(index % 2 ? 4 : 5) }));
+  render(panel()); await rawLoaded();
+  const toggles = within(participating()).getAllByRole('button');
+  expect(toggles.map(toggle => toggle.textContent)).toEqual(['▸Bar 0 / 25 selected', '▸Fictional server 0 / 24 selected', '▸Temporary participants 0 / 0 selected']);
+  for (const toggle of toggles) {
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveClass('min-h-12');
+    expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toHaveAttribute('hidden');
+  }
+  expect(within(participating()).queryByRole('checkbox')).not.toBeInTheDocument();
+});
+
+it('opens with Enter and closes with Space without changing selection, exact edits or payouts', async () => {
+  render(panel()); await rawLoaded();
+  const toggle = roleToggle();
+  toggle.focus(); await userEvent.keyboard('{Enter}');
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  choose(); editWeight('0.29');
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100.01' } });
+  const payout = screen.getByRole('group', { name: 'Employee Fictional Avery' }).textContent;
+  toggle.focus(); await userEvent.keyboard(' ');
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  expect(toggle).toHaveTextContent('1 / 1 selected');
+  expect(screen.queryByRole('textbox', { name: /Temporary share weight/ })).not.toBeInTheDocument();
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent(payout!);
+  await userEvent.keyboard('{Enter}');
+  expect(weightInput()).toHaveValue('0.29');
+  expect(within(participating()).getByRole('checkbox')).toBeChecked();
+});
+
+it('bulk selects eligible zeros, excludes inactive pairs, and clears only its role without erasing edits', async () => {
+  tables.job_roles.push({ ...role(), id: id(5), name: 'Retired', is_active: false }, { ...role(), id: id(10), name: 'Bar' });
+  tables.employees.push({ ...employee(), id: id(7), name: 'Fictional Zero', default_weight_override: '0' },
+    { ...employee(), id: id(8), name: 'Fictional Inactive', is_active: false },
+    { ...employee(), id: id(11), name: 'Fictional Retired', default_role_id: id(5) },
+    { ...employee(), id: id(12), name: 'Fictional Bar', default_role_id: id(10) });
+  render(panel()); await loaded(); choose('Fictional Bar');
+  const section = roleToggle().closest('section')!;
+  fireEvent.click(within(section).getByRole('button', { name: 'Select all eligible' }));
+  expect(roleToggle()).toHaveTextContent('2 / 2 selected');
+  expect(within(section).getByRole('checkbox', { name: /Fictional Zero/ })).toBeChecked();
+  expect(within(section).getByRole('checkbox', { name: /Fictional Inactive/ })).not.toBeChecked();
+  const retired = roleToggle('Retired').closest('section')!;
+  fireEvent.click(within(retired).getByRole('button', { name: 'Select all eligible' }));
+  expect(roleToggle('Retired')).toHaveTextContent('0 / 0 selected');
+  editWeight('75.25'); editWeight('0.001', 'Fictional Zero');
+  fireEvent.click(within(section).getByRole('button', { name: 'Clear selection' }));
+  expect(roleToggle()).toHaveTextContent('0 / 2 selected');
+  expect(roleToggle('Bar')).toHaveTextContent('1 / 1 selected');
+  expect(weightInput()).toHaveValue('75.25'); expect(weightInput('Fictional Zero')).toHaveValue('0.001');
+  expect(screen.getByRole('group', { name: 'Allocated Tips' })).not.toHaveTextContent('—');
+  fireEvent.click(roleToggle()); fireEvent.click(roleToggle());
+  fireEvent.click(within(section).getByRole('button', { name: 'Select all eligible' }));
+  expect(weightInput('Fictional Zero')).toHaveAttribute('aria-invalid', 'true');
+  fireEvent.click(screen.getByRole('button', { name: 'Reset Fictional Zero to default' }));
+  expect(weightInput('Fictional Zero')).toHaveValue('0');
+});
+
+it('orders roles and names by identity without combining duplicate role names or mutating inputs', () => {
+  const person = (id: string, name: string, roleId: string, jobTitle: string) => ({ id, name, roleId, jobTitle, weightText: '1', weightUnits: 100 });
+  const original = [person('z', 'Same', 'b', 'Server'), person('a', 'Same', 'b', 'Server'), person('c', 'Avery', 'b', 'Server'), person('e', 'Zoe', 'a', 'Server'), person('d', 'Blair', 'c', 'Bar')];
+  const before = structuredClone(original);
+  const groups = groupCalculationParticipants(original);
+  expect(groups.map(group => group.id)).toEqual(['role:c', 'role:a', 'role:b', 'temporary']);
+  expect(groups[2].participants.map(person => person.id)).toEqual(['c', 'a', 'z']);
+  expect(original).toEqual(before);
+});
+
+it('renders role-first payout headings and sorted duplicate-name rows with unchanged cents and remainder', async () => {
+  tables.job_roles = [{ ...role(), name: 'Server' }, { ...role(), id: id(5), name: 'Bar' }];
+  tables.employees = [{ ...employee(), name: 'Zoe', default_weight_override: '100' },
+    { ...employee(), id: id(8), name: 'Avery', default_role_id: id(5), default_weight_override: '50' },
+    { ...employee(), id: id(7), name: 'Avery', default_role_id: id(5), default_weight_override: '0' }];
+  render(panel()); await loaded();
+  const rows = within(participating()).getAllByRole('group');
+  expect(rows.map(row => row.getAttribute('aria-label'))).toEqual(['Shared employee Avery', 'Shared employee Avery', 'Shared employee Zoe']);
+  expect(within(rows[0]).getByRole('textbox')).toHaveValue('0');
+  for (const button of within(participating()).getAllByRole('button', { name: 'Select all eligible' })) fireEvent.click(button);
+  addTemporary('Guest', '0', 'Bar');
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100' } });
+  const results = screen.getByRole('heading', { name: 'Selected Participants' }).parentElement!.parentElement!;
+  expect(within(results).getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['Bar', 'Server', 'Temporary participants']);
+  expect(within(results).getAllByRole('group').map(row => row.getAttribute('aria-label'))).toEqual(['Employee Avery', 'Employee Avery', 'Employee Zoe', 'Employee Guest']);
+  expect(screen.getByRole('group', { name: 'Employee Zoe' })).toHaveTextContent('$66.66');
+  expect(screen.getAllByRole('group', { name: 'Employee Avery' })[1]).toHaveTextContent('$33.33');
+  expect(screen.getByRole('group', { name: 'Unassigned Remainder' })).toHaveTextContent('+$0.01');
+});
+
+it('keeps new temporary entries selected in their collapsed group and preserves edits after reopening', async () => {
+  render(panel()); await rawLoaded();
+  // Submit directly so this test does not use the legacy helper that opens rows.
+  fireEvent.change(screen.getByLabelText('Temporary participant name'), { target: { value: 'Guest' } });
+  fireEvent.change(screen.getByLabelText('Job title / role label'), { target: { value: 'Server' } });
+  fireEvent.change(screen.getByLabelText('Initial share weight'), { target: { value: '0' } });
+  fireEvent.submit(screen.getByRole('form', { name: 'Add temporary participant' }));
+  const toggle = roleToggle('Temporary participants');
+  expect(toggle).toHaveAttribute('aria-expanded', 'false'); expect(toggle).toHaveTextContent('1 / 1 selected');
+  expect(screen.getByRole('group', { name: 'Employee Guest' })).toBeVisible();
+  fireEvent.click(toggle); editWeight('0.29', 'Guest');
+  fireEvent.click(toggle); fireEvent.click(toggle);
+  expect(weightInput('Guest')).toHaveValue('0.29');
+  removeTemporary('Guest');
+  expect(toggle).toHaveTextContent('0 / 0 selected');
+});
+
+it('preserves mixed expansion choices on routine verification and resets them on explicit reload', async () => {
+  tables.job_roles.push({ ...role(), id: id(5), name: 'Bar' });
+  tables.employees.push({ ...employee(), id: id(7), name: 'Blair', default_role_id: id(5) });
+  const view = render(panel()); await rawLoaded();
+  fireEvent.click(roleToggle());
+  // Select without opening the other role or temporary section.
+  fireEvent.click(within(participating()).getByRole('checkbox'));
+  editWeight('0.29');
+  const toggle = roleToggle();
+  const late = deferred<Response>();
+  intercept = request => request.table === 'organization_memberships' ? late.promise : undefined;
+  view.rerender(panel({ accessRevision: 1 }));
+  fireEvent.click(toggle);
+  fireEvent.click(within(toggle.closest('section')!).getByRole('button', { name: 'Clear selection' }));
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await act(async () => late.resolve(response([membership()])));
+  await waitFor(() => expect(toggle.closest('[inert]')).toBeNull());
+  expect(roleToggle('Bar')).toHaveAttribute('aria-expanded', 'false');
+  expect(roleToggle('Temporary participants')).toHaveAttribute('aria-expanded', 'false');
+  expect(weightInput()).toHaveValue('0.29');
+  expect(toggle).toHaveTextContent('1 / 1 selected');
+  intercept = () => undefined;
+  reload(); await rawLoaded();
+  expect(within(participating()).queryAllByRole('button', { expanded: false })).toHaveLength(3);
+  expect(roleToggle()).toHaveTextContent('0 / 1 selected');
 });

@@ -10,7 +10,7 @@ await mkdir('work/scroll', { recursive: true });
 const server = await createServer({ envDir: resolve('work/scroll'), server: { host: '127.0.0.1', port: 0, strictPort: false } });
 await server.listen();
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, headless: true, args: ['--no-sandbox'] });
-const report = { browser: browser.version(), viewport: { width: 820, height: 1180 }, cases: [] };
+const report = { browser: browser.version(), viewport: { width: Number(process.env.SCROLL_VIEWPORT_WIDTH ?? 820), height: Number(process.env.SCROLL_VIEWPORT_HEIGHT ?? 1180) }, cases: [] };
 const failures = [];
 try {
   for (const mode of ['local', 'shared']) {
@@ -26,6 +26,11 @@ try {
     if (mode === 'shared') {
       await page.getByRole('radio', { name: 'Restaurant shared roster', exact: true }).check();
       const participants = page.getByRole('group', { name: 'Participating employees', exact: true });
+      await participants.waitFor();
+      const toggles = participants.getByRole('button', { expanded: false });
+      assert.ok(await toggles.count() > 0, 'Roles start collapsed');
+      assert.equal(await participants.getByRole('checkbox').count(), 0);
+      while (await toggles.count()) await toggles.first().click();
       await participants.getByRole('checkbox').last().waitFor();
       await participants.getByRole('checkbox').last().scrollIntoViewIfNeeded();
       const beforeSelection = await page.evaluate(() => ({ y: scrollY, events: window.scrollFixture.events.filter(event => event.type.startsWith('request:')).length }));
@@ -50,6 +55,12 @@ try {
     await rounding.tap(); await rounding.tap();
     const ordinaryAfter = await page.evaluate(() => ({ y: scrollY, requests: window.scrollFixture.events.filter(event => event.type.startsWith('request:')).length }));
     assert.deepEqual(ordinaryAfter, ordinaryBefore, 'Ordinary rounding taps must not scroll or refresh access');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, `${mode}: no horizontal overflow`);
+    if (mode === 'shared') {
+      for (const toggle of await page.locator('button[aria-expanded]').all()) {
+        assert.ok((await toggle.boundingBox()).height >= 48, 'Role header must be a comfortable touch target');
+      }
+    }
     // Drop input focus: no keyboard or focus-scroll explanation is required.
     await page.evaluate(() => document.activeElement.blur());
     await rounding.scrollIntoViewIfNeeded();
