@@ -106,7 +106,6 @@ function RosterRequest({ client, userId, calculationMode, management: manage = f
 
   const loading = state.loading || state.revision !== revision;
   const roster = navigator.onLine && !state.error ? state.roster : undefined;
-  const roleById = new Map(state.roster?.roles.map(role => [role.id, role]));
   return <div className="space-y-4">
     {state.organizations.length > 1 || (state.error && state.organizations.length > 0) ? <div>
       <label htmlFor="shared-organization" className="block font-semibold">Restaurant</label>
@@ -141,24 +140,6 @@ function RosterRequest({ client, userId, calculationMode, management: manage = f
       <SharedCalculation client={client} userId={userId} organizationId={state.selected} restaurantName={state.organizations.find(org => org.id === state.selected)!.name} accessRevision={revision} accessPending={loading} visible={!manage} />
     </div>}
     {manage && roster && <ManageSharedRoster client={client} userId={userId} organizationId={state.selected} refreshRevision={revision} closeLabel="Back to calculator" onAccessUnavailable={onAccessUnavailable} onClose={() => setManage(false)} />}
-    {!manage && !calculationMode && roster && <div className="space-y-4" inert={loading}>
-      <p className="text-sm text-gray-600">Shared restaurant records stay separate from the browser-local calculator. Open Manage roster to inspect or edit permanent defaults.</p>
-      <div className="grid sm:grid-cols-2 gap-6">
-        <div><h3 className="font-semibold">Shared job roles</h3>
-          {!roster.roles.length ? <p>No shared job roles.</p> : <ul className="space-y-2 mt-2">
-            {roster.roles.map(role => <li key={role.id} className="break-words">{role.name} · {role.is_active ? 'Active' : 'Inactive'}</li>)}
-          </ul>}
-        </div>
-        <div><h3 className="font-semibold">Shared employees</h3>
-          {!roster.employees.length ? <p>No shared employees.</p> : <ul className="space-y-2 mt-2">
-            {roster.employees.map(employee => <li key={employee.id} className="break-words">
-              {employee.name} · {employee.is_active ? 'Active' : 'Inactive'}
-              <span className="block text-sm">Default role: {roleById.get(employee.default_role_id)!.name} · {roleById.get(employee.default_role_id)!.is_active ? 'Active' : 'Inactive'}</span>
-            </li>)}
-          </ul>}
-        </div>
-      </div>
-    </div>}
 
   </div>;
 }

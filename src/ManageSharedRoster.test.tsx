@@ -829,7 +829,9 @@ it('does not carry input to another restaurant and keeps the automatically selec
   fireEvent.click(screen.getByRole('button', { name: 'Discard draft and return' }));
   await userEvent.selectOptions(screen.getByLabelText('Restaurant'), foreign);
   expect(screen.queryByRole('form')).not.toBeInTheDocument();
-  expect(await screen.findByText('No shared employees.')).toBeVisible();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Manage roster' })).toBeEnabled());
+  expect(screen.getByLabelText('Restaurant')).toHaveValue(foreign);
+  expect(screen.queryByRole('heading', { name: 'Shared employees' })).not.toBeInTheDocument();
   expect(screen.queryByText('Fictional server · Active')).not.toBeInTheDocument();
   expect(mutations()).toHaveLength(0);
 });
@@ -928,7 +930,9 @@ it('ignores a delayed failed roster request after switching restaurants without 
   fireEvent.click(screen.getByRole('button', { name: 'Discard draft and return' }));
   await userEvent.selectOptions(screen.getByLabelText('Restaurant'), foreign);
   expect(oldSignal?.aborted).toBe(true);
-  expect(await screen.findByText('No shared employees.')).toBeVisible();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Manage roster' })).toBeEnabled());
+  expect(screen.getByLabelText('Restaurant')).toHaveValue(foreign);
+  expect(screen.queryByRole('heading', { name: 'Shared employees' })).not.toBeInTheDocument();
   await act(async () => late.resolve(response([], 500)));
   expect(screen.getByLabelText('Restaurant')).toHaveValue(foreign);
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -1209,4 +1213,53 @@ it.each(['reassigned', 'removed'] as const)('keeps the same inline employee draf
   fireEvent.click(screen.getByRole('button', { name: 'Cancel draft' }));
   expect(screen.queryByRole('form')).not.toBeInTheDocument();
   expect(groupToggle('Zulu service')).toBeEnabled();
+});
+
+it('omits the 49-person shared summary in local mode while keeping the local calculator, management and shared participant selector functional', async () => {
+  largeManagementRoster();
+  const project = 'https://fictional.example.test';
+  const saved = JSON.stringify([{ id: 'local', name: 'Fictional Local', jobTitle: 'Local server', weight: 100 }]);
+  localStorage.setItem(accountRosterKey(project, userId), saved);
+  render(<AuthGate runtime={{ mode: 'configured', project, client }} />);
+  await screen.findByRole('button', { name: 'Manage roster' });
+  const workspace = screen.getByRole('region', { name: 'Restaurant workspace' });
+  const assertNoSharedSummary = () => {
+    expect(within(workspace).queryByRole('list')).not.toBeInTheDocument();
+    expect(within(workspace).queryByRole('heading', { name: 'Shared job roles' })).not.toBeInTheDocument();
+    expect(within(workspace).queryByRole('heading', { name: 'Shared employees' })).not.toBeInTheDocument();
+    for (const row of [...tables.job_roles, ...tables.employees]) {
+      expect(within(workspace).queryByText(`${row.name} · ${row.is_active ? 'Active' : 'Inactive'}`)).not.toBeInTheDocument();
+    }
+  };
+  expect(screen.getByRole('radio', { name: 'Browser-local roster' })).toBeChecked();
+  expect(screen.getByText('Restaurant: Fictional restaurant A')).toBeVisible();
+  assertNoSharedSummary();
+  const cash = screen.getByRole('textbox', { name: 'Cash Tips ($)' });
+  fireEvent.change(cash, { target: { value: '42.50' } });
+  expect(screen.getByRole('group', { name: 'Employee Fictional Local' })).toHaveTextContent('$42.50');
+  fireEvent.click(screen.getByRole('button', { name: 'Manage roster' }));
+  await loaded(false);
+  expect(within(roleSection()).getAllByRole('listitem')).toHaveLength(5);
+  expect(within(employeeSection()).getAllByRole('button', { expanded: false })).toHaveLength(5);
+  fireEvent.click(groupToggle('Bar'));
+  expect(within(employeeGroup('Bar')).getAllByRole('listitem')).toHaveLength(10);
+  expect(within(employeeGroup('Bar')).getByText('Fictional Employee 43 · Active')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
+  assertNoSharedSummary();
+  expect(screen.getByRole('textbox', { name: 'Cash Tips ($)' })).toBe(cash);
+  expect(cash).toHaveValue('42.50');
+  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+  const participants = await screen.findByRole('group', { name: 'Participating employees' });
+  fireEvent.click(within(participants).getByRole('button', { name: /^Bar.*selected/ }));
+  fireEvent.click(within(participants).getByRole('checkbox', { name: /Fictional Employee 43/ }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Cash Tips ($)' }), { target: { value: '100' } });
+  expect(screen.getByRole('group', { name: 'Employee Fictional Employee 43' })).toHaveTextContent('$100.00');
+  fireEvent.click(screen.getByRole('radio', { name: 'Browser-local roster' }));
+  assertNoSharedSummary();
+  expect(screen.queryByRole('group', { name: 'Participating employees' })).not.toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: 'Cash Tips ($)' })).toBe(cash);
+  expect(cash).toHaveValue('42.50');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Local' })).toHaveTextContent('$42.50');
+  expect(localStorage.getItem(accountRosterKey(project, userId))).toBe(saved);
+  expect(mutations()).toHaveLength(0);
 });

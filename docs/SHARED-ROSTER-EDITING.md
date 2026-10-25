@@ -533,3 +533,21 @@ existing tests now open collapsed groups explicitly and use the concise add labe
 `git diff --check` passed. These are mocked React/SDK and offline checks, not native
 iPad Safari or live Auth/PostgREST/RLS verification. No hosted DEV was accessed and
 nothing was deployed.
+
+### Browser-local view without the shared summary (PR #52)
+
+Browser-local calculation no longer renders the redundant read-only shared job-role
+and employee lists. Restaurant selection, verified Manage roster access, shared
+participant selection and the editable management screen remain available. The
+existing bounded roster reads, membership rechecks, refresh timers, cancellation,
+tenant isolation and failure/revocation handling are retained; this removes only
+the summary rendering. A fictional 49-person regression exercises local payouts,
+management from local mode, the shared participant selector, and retained local
+inputs/storage when returning. Context/security tests now assert the remaining
+verified controls rather than the removed summary rows.
+
+Summary-removal verification: `npm run check` passed 420 frontend tests in eight
+files (including 100 management and 41 restaurant-context tests), 14 offline
+provisioning checks, 41 offline roster harness tests, ESLint, TypeScript and Vite
+build. `git diff --check` passed. Native iPad Safari and live Supabase checks were
+not run; no hosted DEV access or deployment occurred.
