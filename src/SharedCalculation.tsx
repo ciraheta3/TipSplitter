@@ -9,7 +9,7 @@ import type { CalculationParticipant, SharedCalculationEmployee } from './shared
 import { verifyRosterAccess } from './sharedRosterEditingData';
 import { rosterSaveScope } from './sharedRosterSaveScope';
 
-type Props = { client: SupabaseClient; userId: string; organizationId: string; restaurantName: string; accessRevision: number; accessPending: boolean };
+type Props = { client: SupabaseClient; userId: string; organizationId: string; restaurantName: string; accessRevision: number; accessPending: boolean; visible?: boolean };
 type State = { employees?: SharedCalculationEmployee[]; checking: boolean; requestKey?: string; error?: string; accountChanged?: boolean };
 
 export default function SharedCalculation(props: Props) {
@@ -17,7 +17,7 @@ export default function SharedCalculation(props: Props) {
   return <SnapshotCalculator key={rosterSaveScope(props.client, props.userId, props.organizationId).id} {...props} />;
 }
 
-function SnapshotCalculator({ client, userId, organizationId, restaurantName, accessRevision, accessPending }: Props) {
+function SnapshotCalculator({ client, userId, organizationId, restaurantName, accessRevision, accessPending, visible = true }: Props) {
   const [reload, setReload] = useState(0);
   const [authRevision, setAuthRevision] = useState(0);
   const [state, setState] = useState<State>({ checking: true });
@@ -84,7 +84,7 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
   // A prior verified snapshot stays visible but inert during routine checks.
   // Initial loads, explicit reloads and failures have no snapshot to show.
   const employees = !state.error ? state.employees : undefined;
-  const canEdit = () => !blocked && !!employees && !invalidated.current && !controller.current?.signal.aborted;
+  const canEdit = () => visible && !blocked && !!employees && !invalidated.current && !controller.current?.signal.aborted;
   const calculationEmployees = employees ? [...employees, ...temporary] : [];
   const groups = groupCalculationParticipants(calculationEmployees);
   const selectedEmployees = calculationEmployees.filter(employee => employee.eligible && selected.has(employee.id));
@@ -111,7 +111,7 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
     <p>Choose participants for this temporary preview. Shared employees need active records and roles. One-time temporary participants need no shared employee or job role. Selection does not edit permanent defaults or save a shift or payment.</p>
     <p className="text-sm">Temporary share weights are relative shares, not tip percentages. Changes stay in this preview and do not modify the shared roster in Supabase.</p>
     <p className="text-sm">Defaults stay fixed until you reload. Reloading resets temporary weights to the latest defaults and clears all participant selections and temporary participants. Deselecting excludes an employee from payouts; reselecting keeps their temporary weight in this preview.</p>
-    <button className="rounded border border-blue-700 px-4 py-3 disabled:opacity-50" disabled={accessPending || state.accountChanged} onClick={() => {
+    <button className="rounded border border-blue-700 px-4 py-3 disabled:opacity-50" disabled={!visible || accessPending || state.accountChanged} onClick={() => {
       controller.current?.abort();
       snapshot.current = undefined;
       setExpanded(new Set());
@@ -124,7 +124,7 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
     <p role="status" style={{ visibility: blocked && !state.error ? undefined : 'hidden' }} aria-hidden={!blocked || !!state.error}>Verifying shared calculation access and loading exact defaults…</p>
     {state.error && <p role="alert">{state.error}</p>}
     <div className="space-y-4" style={{ visibility: !employees || !navigator.onLine || state.accountChanged ? 'hidden' : undefined }} inert={blocked}>
-    {employees && <TemporaryParticipantForm disabled={blocked} onAdd={(name, jobTitle, weightText, weightUnits) => {
+    {employees && <TemporaryParticipantForm disabled={blocked || !visible} onAdd={(name, jobTitle, weightText, weightUnits) => {
         if (!canEdit()) return false;
         const id = `temporary:${inputPrefix}:${nextTemporaryId.current++}`;
         setTemporary(previous => [...previous, { id, name, jobTitle, weightText, weightUnits, eligible: true, isTemporary: true }]);
@@ -220,7 +220,7 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
       </fieldset>
     </>}
     {!state.error && <Calculator storageKey="" shared={{ participants, selectedRows, restaurantName, unavailable: !employees, validationError,
-      exclusionDisabled: blocked,
+      exclusionDisabled: blocked || !visible,
       onExclude: id => {
         if (!canEdit() || !selectedEmployees.some(employee => employee.id === id)) return;
         setSelected(previous => {

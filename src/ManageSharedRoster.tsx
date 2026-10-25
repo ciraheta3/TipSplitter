@@ -8,7 +8,7 @@ import { rosterSaveScope } from './sharedRosterSaveScope';
 const button = 'rounded border border-blue-700 text-blue-800 px-3 py-2 disabled:opacity-50';
 type Editor = ({ kind: 'role'; row?: EditRole } | { kind: 'employee'; row?: EditEmployee }) & { snapshot: EditSnapshot; conflict?: boolean };
 type State = { loading: boolean; snapshot?: EditSnapshot; error?: string; saving?: boolean; message?: string; requestKey?: string; unverified?: boolean };
-type Props = { client: SupabaseClient; userId: string; organizationId: string; onClose: () => void; refreshRevision?: number };
+type Props = { client: SupabaseClient; userId: string; organizationId: string; onClose: () => void; refreshRevision?: number; closeLabel?: string; onAccessUnavailable?: () => void };
 
 export default function ManageSharedRoster(props: Props) {
   const scope = rosterSaveScope(props.client, props.userId, props.organizationId);
@@ -16,10 +16,12 @@ export default function ManageSharedRoster(props: Props) {
   return <RosterManager key={scope.id} {...props} scope={scope} />;
 }
 
-function RosterManager({ client, userId, organizationId, onClose, refreshRevision, scope }: Props & { scope: ReturnType<typeof rosterSaveScope> }) {
+function RosterManager({ client, userId, organizationId, onClose, refreshRevision, closeLabel = 'Close management', onAccessUnavailable, scope }: Props & { scope: ReturnType<typeof rosterSaveScope> }) {
   const [revision, setRevision] = useState(0);
   const [state, setState] = useState<State>({ loading: true });
   const [editor, setEditor] = useState<Editor>();
+  const [leaving, setLeaving] = useState(false);
+  const reportedFailure = useRef(false);
   const controller = useRef<AbortController | undefined>(undefined);
   const saveState = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
   const inspection = useRef<ReturnType<typeof scope.getSnapshot>>(null);
@@ -38,7 +40,7 @@ function RosterManager({ client, userId, organizationId, onClose, refreshRevisio
     setState(previous => discard ? { loading: true } : { ...previous, loading: true, saving: false, error: undefined, message: undefined });
     setRevision(value => value + 1);
   }, [scope]);
-  const reset = () => refresh(true);
+  const reset = () => { setLeaving(false); refresh(true); };
   const revalidate = () => { refresh(); validation.current = true; };
   const inspect = () => {
     reset();
@@ -112,6 +114,20 @@ function RosterManager({ client, userId, organizationId, onClose, refreshRevisio
     });
     return () => { scope.interrupt(); active.abort(); };
   }, [client, userId, organizationId, requestKey, scope]);
+  useEffect(() => {
+    if (!editor) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [editor]);
+  useEffect(() => {
+    // Independently failed manager verification also invalidates the parent's
+    // hidden preview. Report once per mount to avoid a failed-read retry loop.
+    if (state.error && !state.snapshot && !reportedFailure.current) {
+      reportedFailure.current = true;
+      onAccessUnavailable?.();
+    }
+  }, [state.error, state.snapshot, onAccessUnavailable]);
   const basis = editor?.snapshot ?? state.snapshot;
   useEffect(() => {
     if (!basis) return;
@@ -160,6 +176,7 @@ function RosterManager({ client, userId, organizationId, onClose, refreshRevisio
   const busy = !!saveState || !!state.saving;
   const blocked = busy || checking || !snapshot || !editingSnapshotRemaining(snapshot);
   const expired = !!editor && !editingSnapshotRemaining(editor.snapshot);
+  const navigationBlocked = !!state.saving || !!saveState?.pending;
   const recovery = !state.unverified && saveState?.recovery;
   return <section aria-label="Manage shared roster · DEV" className="space-y-4">
     <h3 className="text-lg font-bold">Manage shared roster · DEV</h3>
@@ -167,8 +184,15 @@ function RosterManager({ client, userId, organizationId, onClose, refreshRevisio
     <p className="text-sm">Draft input stays open during routine access checks. Editing snapshots expire after one minute: revalidate before saving an expired draft. Cancel, reload/discard or close intentionally discards the draft; failed access verification also clears it. An interrupted request may still commit; inspect the roster before repeating an addition, even after restarting the page.</p>
     <div className="flex flex-wrap gap-2">
       <button className={button} onClick={reset}>Reload management / discard draft</button>
-      <button className={button} onClick={onClose}>Close management</button>
+      <button className={button} disabled={navigationBlocked} onClick={() => {
+        if (!navigationBlocked) { if (editor) setLeaving(true); else onClose(); }
+      }}>{closeLabel}</button>
     </div>
+    {leaving && editor && <div role="alert" className="border rounded p-4 space-y-3">
+      <p>Discard the unsaved management draft and return to the calculator?</p>
+      <button className={button} onClick={() => setLeaving(false)}>Keep editing</button>
+      <button className={button} disabled={navigationBlocked} onClick={() => { if (!navigationBlocked) onClose(); }}>Discard draft and return</button>
+    </div>}
     {checking && <p role="status">Verifying access and exact shared defaults…</p>}
     {state.saving && <p role="status">Saving shared roster…</p>}
     {state.message && <p role="status">{state.message}</p>}
@@ -220,7 +244,7 @@ function RosterManager({ client, userId, organizationId, onClose, refreshRevisio
           : expired && <p role="alert">This editing snapshot expired. Your input is preserved; revalidate the draft before saving.</p>}
         <button className={button} disabled={busy || checking || !!editor.conflict} onClick={revalidate}>Revalidate draft</button>
         <RosterForm key={`${editor.kind}:${editor.row?.id ?? 'new'}`} editor={editor} snapshot={snapshot} busy={busy} saveBlocked={blocked || expired || !!editor.conflict}
-          onSave={(draft, id) => void save(draft, id)} onCancel={() => setEditor(undefined)} />
+          onSave={(draft, id) => void save(draft, id)} onCancel={() => { setLeaving(false); setEditor(undefined); }} />
       </>}
     </>}
   </section>;

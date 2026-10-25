@@ -427,3 +427,66 @@ Auth tables. Before separately approved dashboard Auth deletion, verify each exa
 temporary user has no active **or inactive** membership in **any** organization.
 Sign out test browsers and remove only separately approved fictional browser storage
 entries if desired. No cleanup SQL or hosted execution is supplied by this issue.
+
+## Independent management navigation (Issue #48)
+
+The restaurant workspace sits below the signed-in application header, independently
+of Calculation source. A verified restaurant offers **Manage roster** from either
+browser-local or shared calculation mode. Multiple memberships still require an
+explicit restaurant selection. Authentication alone never grants membership;
+management independently verifies the current admin/closer membership with the
+existing adapter, column grants and RLS.
+
+Management replaces the calculator view, with **Back to calculator** navigation.
+It uses React view state without a router. The calculator remains mounted in a
+hidden, inert subtree; shared access effects, parent minute/focus/visibility/network
+checks and Auth subscriptions continue running. The shared selector callbacks also
+reject edits while hidden. Failed access removes protected subtrees even while
+hidden. Ordinary navigation preserves source, cash/credit text, rounding, selection,
+exact temporary weights (including invalid text), temporary participants and addition
+drafts. Source changes retain their existing explicit shared-preview reset behavior.
+Account/project/restaurant changes retain their existing scope isolation.
+
+An open editor requires **Keep editing** or **Discard draft and return** before
+Back can leave management. Browser unload receives the standard unsaved-draft guard;
+mobile browser delivery of that event is not guaranteed. Restaurant selection is
+disabled while verified management is open: return first, resolving any draft.
+Sign-out and access failure still clear protected drafts immediately. Failed roster
+reads retain only freshly verified restaurant options and allow recovery/switching.
+Back is disabled during an active save; existing interrupted-save recovery remains
+in effect for refresh, expiry, Auth changes, offline failure and unmount. No pending
+write is replayed by navigation.
+
+Management saves never reload the frozen calculator defaults. Only the existing
+**Reload shared roster / clear selection** action replaces them, with its stated
+reset of selections, temporary weights and one-time participants. No shifts,
+schedules, membership administration, new permissions or database changes are added.
+
+Owner iPad Safari acceptance remains pending, using synthetic data in portrait and
+landscape:
+
+- Enter/exit management from each calculation source; confirm calculator controls
+  are absent in management and the restaurant remains clear. Check touch targets,
+  VoiceOver, external-keyboard navigation and focus on entry/return.
+- Enter cash/credit, rounding, selected employees, temporary weights (valid and
+  invalid), a one-time participant and an addition draft. Return from management
+  and verify every value and payout state. Edit a permanent default; verify it
+  affects this preview only after explicit reload and its documented resets.
+- Open a management draft, choose Back/Keep editing, then Back/Discard. Check
+  browser reload/close warnings where Safari supports them. Wait several minutes,
+  refocus and revalidate; verify expiry/conflict behavior and no automatic save.
+- Check multiple restaurants, account/sign-out changes, failed/offline checks and
+  revocation while management is visible. No previous protected rows/drafts may
+  reappear on return. Confirm current admin/closer permissions and nonmember denial.
+
+React tests use synthetic data and mocked SDK transports; they do not establish
+native Safari or real Auth/PostgREST/RLS behavior. No hosted DEV access or deployment
+is part of this work.
+
+Issue #48 verification (Linux, Node 24.19.0 / npm 11.9.0): `npm run check`
+passed 412 frontend tests in eight files, 14 offline provisioning checks, 41 offline
+roster harness tests, ESLint, TypeScript and the Vite production build.
+`git diff --check` passed. Independent manager access failures trigger parent
+verification so the hidden shared preview is rechecked without waiting for the
+minute timer. Native iPad Safari, database and real Auth/PostgREST checks were not
+run for this frontend change; hosted DEV was not accessed.

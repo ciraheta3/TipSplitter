@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { accessChanged, readOrganizations, readSharedRoster, SharedRosterAccessError, SharedRosterError } from './sharedRosterData';
@@ -7,7 +8,7 @@ import SharedCalculation from './SharedCalculation';
 import { rosterSaveScope } from './sharedRosterSaveScope';
 
 const buttonClass = 'rounded border border-blue-700 text-blue-800 px-4 py-2 disabled:opacity-50';
-type Props = { client: SupabaseClient; userId: string; calculationMode?: boolean };
+type Props = { client: SupabaseClient; userId: string; calculationMode?: boolean; management?: boolean; onManagementChange?: (open: boolean) => void; calculatorControls?: ReactNode };
 type State = {
   organizations: Organization[];
   selected: string;
@@ -18,8 +19,11 @@ type State = {
 };
 
 // Mounted only below the verified Auth gate and keyed there by project/account.
-export default function SharedRoster({ client, userId, calculationMode = false }: Props) {
+export default function SharedRoster({ client, userId, calculationMode = false, management, onManagementChange, calculatorControls }: Props) {
   const [selection, setSelection] = useState('');
+  const [ownManagement, setOwnManagement] = useState(false);
+  const manage = management ?? ownManagement;
+  const setManage = onManagementChange ?? setOwnManagement;
   const [revision, setRevision] = useState(0);
   const refresh = () => setRevision(value => value + 1);
   useEffect(() => {
@@ -39,19 +43,23 @@ export default function SharedRoster({ client, userId, calculationMode = false }
     };
   }, []);
   return <section aria-labelledby="shared-roster-title" className="max-w-6xl mx-auto my-6 p-4 sm:p-6 bg-white border rounded-xl space-y-4">
-    <h2 id="shared-roster-title" className="text-xl font-bold">Shared roster · DEV</h2>
-    <p className="text-sm text-gray-700">Shared restaurant records are separate from your browser-local calculator roster. Neither roster is synchronized. Choose Restaurant shared roster above to calculate a temporary preview from shared defaults.</p>
-    <p className="text-sm text-gray-600">Open management to inspect exact default share weights. The summary shows names and status.</p>
+    <h2 id="shared-roster-title" className="text-xl font-bold">Restaurant workspace</h2>
     <button className={buttonClass} onClick={refresh}>Refresh access / retry</button>
-    <RosterRequest key={rosterSaveScope(client, userId, selection).id} client={client} userId={userId} calculationMode={calculationMode} selection={selection} onSelect={setSelection} revision={revision} />
+    <RosterRequest key={rosterSaveScope(client, userId, selection).id} client={client} userId={userId} calculationMode={calculationMode} management={manage} onManagementChange={setManage} calculatorControls={calculatorControls} onAccessUnavailable={refresh} selection={selection} onSelect={setSelection} revision={revision} />
   </section>;
 }
 
-function RosterRequest({ client, userId, calculationMode, selection, onSelect, revision }: Props & { selection: string; onSelect: (id: string) => void; revision: number }) {
+function RosterRequest({ client, userId, calculationMode, management: manage = false, onManagementChange: setManage = () => {}, selection, onSelect, revision, calculatorControls, onAccessUnavailable }: Props & { onAccessUnavailable: () => void; selection: string; onSelect: (id: string) => void; revision: number }) {
   const [state, setState] = useState<State>({ organizations: [], selected: '', loading: true });
-  const [manage, setManage] = useState(false);
-  const [reload, setReload] = useState(0);
   const preferred = useRef(selection);
+  const viewHeading = useRef<HTMLHeadingElement>(null);
+  const entry = useRef<HTMLButtonElement>(null);
+  const previousView = useRef(manage);
+  useEffect(() => {
+    if (manage) viewHeading.current?.focus();
+    else if (previousView.current) entry.current?.focus();
+    previousView.current = manage;
+  }, [manage]);
   useEffect(() => {
     const controller = new AbortController();
     let current = true;
@@ -94,7 +102,7 @@ function RosterRequest({ client, userId, calculationMode, selection, onSelect, r
       }
     })();
     return () => { current = false; controller.abort(); };
-  }, [client, userId, selection, reload, revision]);
+  }, [client, userId, selection, revision]);
 
   const loading = state.loading || state.revision !== revision;
   const roster = navigator.onLine && !state.error ? state.roster : undefined;
@@ -102,27 +110,39 @@ function RosterRequest({ client, userId, calculationMode, selection, onSelect, r
   return <div className="space-y-4">
     {state.organizations.length > 1 || (state.error && state.organizations.length > 0) ? <div>
       <label htmlFor="shared-organization" className="block font-semibold">Restaurant</label>
-      <select id="shared-organization" className="w-full sm:w-auto max-w-full border rounded p-2" value={state.selected} onChange={event => onSelect(event.target.value)}>
+      <select disabled={manage && !!roster} id="shared-organization" className="w-full sm:w-auto max-w-full border rounded p-2" value={state.selected} onChange={event => {
+        if (manage && roster) return;
+        setManage(false);
+        onSelect(event.target.value);
+      }}>
         {!state.selected && <option value="" disabled>Select a restaurant</option>}
         {state.organizations.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
       </select>
     </div> : state.selected && <p className="font-semibold break-words">Restaurant: {state.organizations.find(org => org.id === state.selected)?.name}</p>}
+    {manage && state.organizations.length > 1 && <p>Back to calculator before changing restaurants. Any open draft must be discarded explicitly.</p>}
     <p role="status" style={{ visibility: loading ? undefined : 'hidden' }} aria-hidden={!loading}>Checking restaurant access and loading shared roster…</p>
-    {state.error && <p role="alert">{state.error}{manage && ' Management was closed and any unsaved draft was cleared because access could not be verified.'}</p>}
+    {state.error && <p role="alert">{state.error}{manage && ' Management is unavailable and any unsaved draft was cleared because access could not be verified.'}</p>}
     {!loading && !state.error && state.organizations.length > 1 && !state.selected && <p>Select a restaurant to view its shared roster.</p>}
     {!loading && !state.error && !state.organizations.length && <div>
       <h3 className="font-semibold">No restaurant access assigned</h3>
       <p>Contact the project owner for access. You can continue using the browser-local calculator.</p>
-      {manage && <p>Management was closed and any unsaved draft was cleared because restaurant access changed.</p>}
+      {manage && <p>Management is unavailable and any unsaved draft was cleared because restaurant access changed.</p>}
     </div>}
-    {calculationMode && roster && <SharedCalculation client={client} userId={userId} organizationId={state.selected} restaurantName={state.organizations.find(org => org.id === state.selected)!.name} accessRevision={revision} accessPending={loading} />}
-    {!calculationMode && (roster && manage ? <ManageSharedRoster client={client} userId={userId} organizationId={state.selected} refreshRevision={revision} onClose={() => {
-      setManage(false);
-      setState({ organizations: [], selected: '', loading: true });
-      setReload(value => value + 1);
-    }} /> : roster && <div className="space-y-4" inert={loading}>
-      <p className="text-sm text-gray-600">Snapshot only. Access is rechecked on refresh, focus, reconnect and every minute; this is not a live subscription.</p>
-      <button className={buttonClass} onClick={() => setManage(true)}>Manage shared roster · DEV</button>
+    {manage && <h2 ref={viewHeading} tabIndex={-1} className="text-2xl font-bold">Manage roster</h2>}
+    {manage && !roster && <button className={buttonClass} onClick={() => setManage(false)}>Back to calculator</button>}
+    {!manage && roster && <button ref={entry} className={buttonClass} disabled={!roster || loading} onClick={() => {
+      if (roster && !loading) setManage(true);
+    }}>Manage roster</button>}
+    {!manage && !roster && !loading && <p>Roster management is unavailable until access to a selected restaurant is verified.</p>}
+    <div hidden={manage} inert={manage}>{calculatorControls}</div>
+    {/* View navigation never changes calculationMode or its scope. The mounted
+        calculator continues verification and clears protected data on failure. */}
+    {calculationMode && roster && <div hidden={manage} inert={manage}>
+      <SharedCalculation client={client} userId={userId} organizationId={state.selected} restaurantName={state.organizations.find(org => org.id === state.selected)!.name} accessRevision={revision} accessPending={loading} visible={!manage} />
+    </div>}
+    {manage && roster && <ManageSharedRoster client={client} userId={userId} organizationId={state.selected} refreshRevision={revision} closeLabel="Back to calculator" onAccessUnavailable={onAccessUnavailable} onClose={() => setManage(false)} />}
+    {!manage && !calculationMode && roster && <div className="space-y-4" inert={loading}>
+      <p className="text-sm text-gray-600">Shared restaurant records stay separate from the browser-local calculator. Open Manage roster to inspect or edit permanent defaults.</p>
       <div className="grid sm:grid-cols-2 gap-6">
         <div><h3 className="font-semibold">Shared job roles</h3>
           {!roster.roles.length ? <p>No shared job roles.</p> : <ul className="space-y-2 mt-2">
@@ -138,6 +158,7 @@ function RosterRequest({ client, userId, calculationMode, selection, onSelect, r
           </ul>}
         </div>
       </div>
-    </div>)}
+    </div>}
+
   </div>;
 }

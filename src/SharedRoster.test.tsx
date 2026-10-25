@@ -51,7 +51,7 @@ function session(user = userA, expires = 3600): Session {
 function gate() {
   return <AuthGate runtime={{ mode: 'configured', project, client }} />;
 }
-const region = () => screen.getByRole('region', { name: 'Shared roster · DEV' });
+const region = () => screen.getByRole('region', { name: 'Restaurant workspace' });
 const refresh = () => fireEvent.click(screen.getByRole('button', { name: 'Refresh access / retry' }));
 async function loaded(org = orgA) { return screen.findByText(`${employee(org).name} · Active`); }
 
@@ -215,7 +215,7 @@ it.each(['server', 'oversized'])('keeps freshly verified restaurant options afte
     expect(screen.getByLabelText('Restaurant')).toHaveValue(orgA.id);
     expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual([orgA.name, orgB.name]);
     expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Manage shared roster · DEV' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Manage roster' })).not.toBeInTheDocument();
     refresh();
     await waitFor(() => expect(screen.getByText('Checking restaurant access and loading shared roster…')).not.toBeVisible());
     expect(await screen.findByRole('alert')).toHaveTextContent(message);
@@ -262,7 +262,7 @@ it.each(['organization_memberships', 'organizations', 'revoked'] as const)('also
   expect(screen.queryByLabelText('Restaurant')).not.toBeInTheDocument();
   expect(screen.queryByRole('option')).not.toBeInTheDocument();
   expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Manage shared roster · DEV' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Manage roster' })).not.toBeInTheDocument();
 });
 
 it.each(['logout', 'account-switch'] as const)('clears retained options on %s and ignores the prior account\'s delayed roster failure', async event => {
@@ -418,7 +418,7 @@ it('clears account A synchronously on account switch and ignores its delayed res
   render(gate());
   await waitFor(() => expect(requests.some(request => request.table === 'employees')).toBe(true));
   await act(async () => emit('SIGNED_IN', session(userB)));
-  expect(screen.queryByRole('region', { name: 'Shared roster · DEV' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Restaurant workspace' })).not.toBeInTheDocument();
   await screen.findByText('No restaurant access assigned');
   await act(async () => lateA.resolve(response([employee()])));
   expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
@@ -433,7 +433,7 @@ it.each(['sign-out', 'cross-tab-sign-out'])('unmounts shared data on %s and igno
   await waitFor(() => expect(requests.at(-1)!.init.signal?.aborted).toBe(false));
   if (kind === 'sign-out') fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
   else await act(async () => emit('SIGNED_OUT', null));
-  expect(screen.queryByRole('region', { name: 'Shared roster · DEV' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Restaurant workspace' })).not.toBeInTheDocument();
   await act(async () => pending.resolve(response([membership()])));
   expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
   await screen.findByRole('button', { name: 'Sign in' });
@@ -446,7 +446,7 @@ it('unmounts shared content at verified session expiry', async () => {
   await act(async () => { await vi.advanceTimersByTimeAsync(1); });
   expect(screen.getByText(`${employee().name} · Active`)).toBeVisible();
   await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
-  expect(screen.queryByRole('region', { name: 'Shared roster · DEV' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Restaurant workspace' })).not.toBeInTheDocument();
   expect(screen.getByRole('alert')).toHaveTextContent('session expired');
 });
 
