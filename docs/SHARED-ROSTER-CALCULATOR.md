@@ -163,3 +163,31 @@ does not publish a preview, provision accounts or modify the owner's existing DE
 
 For the v0.1.1 layout-collapse investigation, browser evidence and a credential-free
 iPad acceptance fixture, see [scroll stability](SCROLL-STABILITY.md).
+
+## Collapsible role sections (Issue #45)
+
+The shared preview starts with every role and **Temporary participants** collapsed.
+Headers show selected / eligible counts. Open a role to select individuals, use
+**Select all eligible** or **Clear selection**, and edit/reset temporary share
+weights. Bulk selection uses the same active employee/role eligibility, including
+valid zero weights; clearing only deselects and retains typed weights.
+
+Permanent groups use role IDs already present in the authorized snapshot. Roles
+sort by name then ID; employees sort by name then ID. Distinct roles with matching
+names remain separate. Payouts use the same grouping, with temporary participants
+last. The financial engine and its input order remain unchanged.
+
+Expansion choices live in this preview's React state, independently of selections
+and weights. Collapse/reopen and successful access checks preserve all three;
+explicit reload, access loss, source exit and account/restaurant/client changes
+reset expansion as well as the existing protected preview state. New temporary
+entries remain selected even while their separate group is collapsed. Expanded
+rows use two columns at landscape tablet widths and one on smaller screens; native
+buttons provide Enter/Space support, `aria-expanded` and 48px minimum tap heights.
+The visible/inert layout protections from PR #44 remain in place.
+
+The credential-free fixture linked in [SCROLL-STABILITY.md](SCROLL-STABILITY.md)
+now has 50 synthetic employees across five roles. Start with its collapsed headers,
+then open the roles needed for the existing acceptance steps. Native iPad Safari
+landscape/portrait acceptance is still required; automated Chromium checks do not
+establish Safari behavior.

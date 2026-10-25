@@ -5,7 +5,7 @@ import { verifyRosterAccess } from './sharedRosterEditingData';
 import { sharedOverrideText, sharedWeightText } from './sharedRosterWeights';
 import { SharedRosterError } from './sharedRosterData';
 
-export type CalculationParticipant = Participant & { name: string; jobTitle: string; weightText: string; isTemporary?: boolean };
+export type CalculationParticipant = Participant & { name: string; jobTitle: string; weightText: string; isTemporary?: boolean; roleId?: string };
 export type SharedCalculationEmployee = CalculationParticipant & { eligible: boolean; exclusion?: string };
 export const calculationRoleProjection = 'id,organization_id,name,is_active,default_weight::text';
 export const calculationEmployeeProjection = 'id,organization_id,name,is_active,default_role_id,default_weight_override::text';
@@ -45,7 +45,7 @@ export async function loadCalculationRoster(client: SupabaseClient, userId: stri
       const role = roles.get(text(row.default_role_id));
       if (!role) throw new SharedRosterError(invalid);
       const weightText = sharedOverrideText(row.default_weight_override) ?? role.weight;
-      return { id: row.id, name: row.name, jobTitle: role.name, weightText, weightUnits: parseWeightInput(weightText),
+      return { id: row.id, name: row.name, jobTitle: role.name, roleId: role.id, weightText, weightUnits: parseWeightInput(weightText),
         eligible: row.is_active && role.is_active,
         exclusion: !row.is_active ? 'Inactive employee' : !role.is_active ? 'Inactive role' : undefined };
     });
