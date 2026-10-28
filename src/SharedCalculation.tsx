@@ -118,10 +118,10 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
   const invalidParticipant = selectedEmployees.find(employee => weightErrors.has(employee.id));
   const validationError = invalidParticipant ? `Correct the temporary share weight for ${invalidParticipant.name}.` : undefined;
   return <section aria-label="Shared calculation preview" className="space-y-4 border-t pt-4">
-    <h3 className="text-lg font-bold break-words">Restaurant shared roster · {restaurantName}</h3>
-    <p>Choose participants for this temporary preview. Shared employees need active records and roles. One-time temporary participants need no shared employee or job role. Selection does not edit permanent defaults or save a shift or payment.</p>
-    <p className="text-sm">Temporary share weights are relative shares, not tip percentages. Changes stay in this preview and do not modify the shared roster in Supabase.</p>
-    <p className="text-sm">Defaults stay fixed until you reload. Reloading resets temporary weights to the latest defaults and clears all participant selections and temporary participants. Deselecting excludes an employee from payouts; reselecting keeps their temporary weight in this preview.</p>
+    <h3 className="text-lg font-bold break-words">Restaurant roster · {restaurantName}</h3>
+    <p>Choose participants for this calculation. Only active employees with active roles can be selected.</p>
+    <p className="text-sm">Temporary share weights are relative shares, not tip percentages. Changes apply to this calculation only.</p>
+    <p className="text-sm">Reloading uses the latest defaults, resets temporary weights and clears selections and temporary participants.</p>
     <button className="rounded border border-blue-700 px-4 py-3 disabled:opacity-50" disabled={!visible || accessPending || state.accountChanged} onClick={() => {
       controller.current?.abort();
       snapshot.current = undefined;
@@ -131,8 +131,8 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
       setTemporary([]);
       setState({ checking: true });
       setReload(value => value + 1);
-    }}>Reload shared roster / clear selection</button>
-    <p role="status" style={{ visibility: blocked && !state.error ? undefined : 'hidden' }} aria-hidden={!blocked || !!state.error}>Verifying shared calculation access and loading exact defaults…</p>
+    }}>Reload roster / clear selection</button>
+    <p role="status" style={{ visibility: blocked && !state.error ? undefined : 'hidden' }} aria-hidden={!blocked || !!state.error}>Checking calculation access…</p>
     {state.error && <p role="alert">{state.error}</p>}
     <div className="space-y-4" style={{ visibility: !employees || !navigator.onLine || state.accountChanged ? 'hidden' : undefined }} inert={blocked}>
     {employees && <TemporaryParticipantForm disabled={blocked || !visible} onAdd={(name, jobTitle, weightText, weightUnits) => {
@@ -188,7 +188,7 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
                     return next;
                   });
                 }} />
-              <span className="min-w-0">{employee.name} · {employee.jobTitle}{employee.isTemporary && <span className="ml-2 rounded bg-amber-100 px-2 py-1 text-xs">Temporary</span>}<span id={`${inputId}-default`} className="block text-sm">{employee.isTemporary ? 'One-time participant · not in shared roster' : `Permanent default share weight: ${employee.weightText}`}{employee.exclusion && ` · ${employee.exclusion} — excluded`}</span></span>
+              <span className="min-w-0">{employee.name} · {employee.jobTitle}{employee.isTemporary && <span className="ml-2 rounded bg-amber-100 px-2 py-1 text-xs">Temporary</span>}<span id={`${inputId}-default`} className="block text-sm">{employee.isTemporary ? 'Temporary participant · Not saved' : `Permanent default share weight: ${employee.weightText}`}{employee.exclusion && ` · ${employee.exclusion} — excluded`}</span></span>
             </label>
             {employee.eligible && <div className="space-y-2">
               <label htmlFor={inputId} className="block font-semibold text-sm">Temporary share weight · {employee.name}</label>
@@ -256,7 +256,7 @@ function TemporaryParticipantForm({ disabled, onAdd }: {
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to add a temporary participant.'); }
   }}>
     <h4 className="font-semibold">Add temporary participant</h4>
-    <p className="text-sm">One-time entries stay in this restaurant preview only. They are never saved to the shared roster or this browser’s local roster. New entries start included.</p>
+    <p className="text-sm">Included in this calculation only; not added to either roster.</p>
     <div className="grid sm:grid-cols-3 gap-3">
       <div><label className="block text-sm" htmlFor={`${prefix}-name`}>Temporary participant name</label>
         <input id={`${prefix}-name`} type="text" maxLength={160} autoComplete="off" required disabled={disabled} value={name} onChange={event => setName(event.target.value)} className="w-full min-h-12 border rounded p-3 text-base" /></div>
