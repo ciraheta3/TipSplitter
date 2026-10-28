@@ -84,14 +84,10 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
   // A prior verified snapshot stays visible but inert during routine checks.
   // Initial loads, explicit reloads and failures have no snapshot to show.
   const employees = !state.error ? state.employees : undefined;
-  const canEdit = () => visible && !blocked && !!employees && !invalidated.current && !controller.current?.signal.aborted;
+  const canEdit = () => visible && navigator.onLine && !blocked && !!employees && !invalidated.current && !controller.current?.signal.aborted;
   const calculationEmployees = employees ? [...employees, ...temporary] : [];
   const groups = groupCalculationParticipants(calculationEmployees);
   const selectedEmployees = calculationEmployees.filter(employee => employee.eligible && selected.has(employee.id));
-  // Display rows retain exact text even when no valid financial participant exists.
-  const selectedRows = selectedEmployees.map(({ id, name, jobTitle, roleId, isTemporary, weightText }) => ({
-    id, name, jobTitle, roleId, isTemporary, weightText: weightInputs.get(id) ?? weightText,
-  }));
   const participants: CalculationParticipant[] = [];
   const weightErrors = new Map<string, string>();
   for (const employee of calculationEmployees) {
@@ -104,6 +100,21 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
       weightErrors.set(employee.id, error instanceof Error ? error.message : 'Invalid share weight.');
     }
   }
+  // Display rows retain exact text and errors without supplying fallback financial units.
+  const selectedRows = selectedEmployees.map(({ id, name, jobTitle, roleId, isTemporary, weightText }) => ({
+    id, name, jobTitle, roleId, isTemporary, weightText: weightInputs.get(id) ?? weightText,
+    defaultWeightText: weightText, weightError: weightErrors.get(id),
+  }));
+  const onWeightChange = (id: string, value: string) => {
+    if (!canEdit() || !selectedEmployees.some(employee => employee.id === id)) return;
+    setWeightInputs(previous => new Map(previous).set(id, value));
+  };
+  const onResetWeight = (id: string) => {
+    if (!canEdit() || !selectedEmployees.some(employee => employee.id === id)) return;
+    setWeightInputs(previous => {
+      const next = new Map(previous); next.delete(id); return next;
+    });
+  };
   const invalidParticipant = selectedEmployees.find(employee => weightErrors.has(employee.id));
   const validationError = invalidParticipant ? `Correct the temporary share weight for ${invalidParticipant.name}.` : undefined;
   return <section aria-label="Shared calculation preview" className="space-y-4 border-t pt-4">
@@ -183,13 +194,9 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
               <label htmlFor={inputId} className="block font-semibold text-sm">Temporary share weight · {employee.name}</label>
               <div className="flex flex-wrap gap-2">
                 <input id={inputId} type="text" inputMode="decimal" className="w-full sm:w-48 min-h-12 border rounded p-3 text-base"
-                  value={weightInputs.get(employee.id) ?? employee.weightText} disabled={!selected.has(employee.id)}
+                  value={weightInputs.get(employee.id) ?? employee.weightText} disabled={blocked || !visible || !selected.has(employee.id)}
                   aria-invalid={!!error} aria-describedby={`${inputId}-default${error ? ` ${inputId}-error` : ''}`}
-                  onChange={event => {
-                    if (!canEdit()) return;
-                    const value = event.target.value;
-                    setWeightInputs(previous => new Map(previous).set(employee.id, value));
-                  }} />
+                  onChange={event => onWeightChange(employee.id, event.target.value)} />
                 {employee.isTemporary ? <button type="button" className="min-h-12 rounded border border-red-700 text-red-800 px-4 py-3"
                   aria-label={`Remove temporary participant ${employee.name}`} onClick={() => {
                     if (!canEdit()) return;
@@ -200,16 +207,10 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
                     setWeightInputs(previous => {
                       const next = new Map(previous); next.delete(employee.id); return next;
                     });
-                  }}>Remove temporary participant</button> : <button type="button" className="min-h-12 rounded border border-blue-700 px-4 py-3 disabled:opacity-50"
-                  aria-label={`Reset ${employee.name} to default`} disabled={!selected.has(employee.id)}
-                  onClick={() => {
-                    if (!canEdit()) return;
-                    setWeightInputs(previous => {
-                      const next = new Map(previous);
-                      next.delete(employee.id);
-                      return next;
-                    });
-                  }}>Reset to default</button>}
+                  }}>Remove temporary participant</button> : null}
+                <button type="button" className="min-h-12 rounded border border-blue-700 px-4 py-3 disabled:opacity-50"
+                  aria-label={`Reset ${employee.name} to default`} disabled={blocked || !visible || !selected.has(employee.id)}
+                  onClick={() => onResetWeight(employee.id)}>Reset to default</button>
               </div>
               {error && <p id={`${inputId}-error`} role="alert" className="text-sm text-red-700">{error}</p>}
             </div>}
@@ -220,7 +221,7 @@ function SnapshotCalculator({ client, userId, organizationId, restaurantName, ac
       </fieldset>
     </>}
     {!state.error && <Calculator storageKey="" shared={{ participants, selectedRows, restaurantName, unavailable: !employees, validationError,
-      exclusionDisabled: blocked || !visible,
+      exclusionDisabled: blocked || !visible, onWeightChange, onResetWeight,
       onExclude: id => {
         if (!canEdit() || !selectedEmployees.some(employee => employee.id === id)) return;
         setSelected(previous => {
