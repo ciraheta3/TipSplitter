@@ -1140,3 +1140,129 @@ it.each(['revoked', 'failed', 'sign-out', 'reload'] as const)('clears inline exc
   fireEvent.click(exclude);
   expect(within(participating()).getByRole('checkbox')).toBeChecked();
 });
+
+async function enterManagement() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Manage roster' }));
+  await screen.findByRole('button', { name: 'Add role' });
+  expect(screen.getByRole('heading', { name: 'Manage roster' })).toHaveFocus();
+  expect(screen.queryByRole('group', { name: 'Calculation source' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Tip Calculator Dashboard' })).not.toBeInTheDocument();
+}
+function editingVersions() {
+  tables.job_roles.forEach(row => row.xmin = '701');
+  tables.employees.forEach(row => row.xmin = '702');
+}
+const gate = () => <AuthGate runtime={{ mode: 'configured', project, client }} />;
+
+it.each(['local', 'shared'])('returns from management to the same mounted %s calculation and exact inputs', async source => {
+  editingVersions();
+  localStorage.setItem(accountRosterKey(project, userId), JSON.stringify([{ id: 'local', name: 'Fictional Local', jobTitle: 'Local', weight: 100 }]));
+  render(gate());
+  await screen.findByRole('button', { name: 'Manage roster' });
+  if (source === 'shared') {
+    fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+    await loaded(); choose(); editWeight('13.25'); addTemporary();
+    fireEvent.change(screen.getByLabelText('Temporary participant name'), { target: { value: 'Fictional addition draft' } });
+  }
+  const cash = screen.getByRole('textbox', { name: 'Cash Tips ($)' });
+  const credit = screen.getByRole('textbox', { name: 'Credit Tips ($)' });
+  const rounding = screen.getByRole('checkbox', { name: 'Round down to whole dollar' });
+  fireEvent.change(cash, { target: { value: '120.25' } });
+  fireEvent.change(credit, { target: { value: '36.50' } });
+  fireEvent.click(rounding);
+  const payout = screen.getByRole('group', { name: `Employee Fictional ${source === 'shared' ? 'Avery' : 'Local'}` });
+  const oldPayout = payout.textContent;
+  const reads = exactReads().length;
+  await enterManagement();
+  // A routine parent check must still verify the hidden calculator without reloading defaults.
+  fireEvent(window, new Event('focus'));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add role' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
+  expect(screen.getByRole('radio', { name: source === 'shared' ? 'Restaurant shared roster' : 'Browser-local roster' })).toBeChecked();
+  expect(screen.getByRole('textbox', { name: 'Cash Tips ($)' })).toBe(cash);
+  expect(cash).toHaveValue('120.25'); expect(credit).toHaveValue('36.50'); expect(rounding).toBeChecked();
+  expect(payout).toHaveTextContent(oldPayout!);
+  expect(screen.getByRole('button', { name: 'Manage roster' })).toHaveFocus();
+  if (source === 'shared') {
+    expect(weightInput()).toHaveValue('13.25');
+    expect(within(temporaryRow()).getByRole('checkbox')).toBeChecked();
+    expect(screen.getByLabelText('Temporary participant name')).toHaveValue('Fictional addition draft');
+    expect(exactReads()).toHaveLength(reads);
+  }
+});
+
+it.each(['revoked', 'failed', 'offline'])('clears the hidden shared calculation when management observes %s access', async kind => {
+  editingVersions(); render(gate());
+  await screen.findByRole('button', { name: 'Manage roster' });
+  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+  await loaded(); choose(); editWeight('invalid'); addTemporary();
+  const oldPreview = screen.getByRole('region', { name: 'Shared calculation preview' });
+  await enterManagement();
+  if (kind === 'revoked') tables.organization_memberships = [];
+  if (kind === 'failed') intercept = request => request.table === 'organization_memberships' ? new Response('{}', { status: 503 }) : undefined;
+  if (kind === 'offline') vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+  fireEvent(window, new Event(kind === 'offline' ? 'offline' : 'focus'));
+  await waitFor(() => expect(oldPreview).not.toBeInTheDocument());
+  expect(screen.queryByRole('button', { name: 'Add employee' })).not.toBeInTheDocument();
+  expect(screen.queryByText('Fictional Avery · Active')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
+  if (kind === 'offline') vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+  tables.organization_memberships = [membership()]; intercept = () => undefined;
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh access / retry' }));
+  await loaded();
+  expect(weightInput()).toHaveValue('100');
+  expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
+  expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
+});
+
+it.each(['SIGNED_OUT', 'SIGNED_IN'] as const)('clears management and hidden preview immediately on an account event: %s', async event => {
+  editingVersions(); render(gate());
+  await screen.findByRole('button', { name: 'Manage roster' });
+  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+  await loaded(); choose(); addTemporary(); await enterManagement();
+  fireEvent.click(screen.getByRole('button', { name: 'Add role' }));
+  fireEvent.change(screen.getByLabelText('Shared role name'), { target: { value: 'Fictional private draft' } });
+  act(() => emit(event, event === 'SIGNED_OUT' ? null : { ...session!, user: { ...session!.user, id: otherUser } }));
+  expect(screen.queryByRole('form', { name: 'Add shared job role' })).not.toBeInTheDocument();
+  expect(screen.queryByText('Fictional private draft')).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Shared calculation preview', hidden: true })).not.toBeInTheDocument();
+});
+
+it.each(['local', 'shared'])('does not grant management access to a signed-in nonmember in %s calculation mode', async source => {
+  tables.organization_memberships = [];
+  render(gate());
+  await screen.findByText('No restaurant access assigned');
+  if (source === 'shared') fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+  expect(screen.queryByRole('button', { name: 'Manage roster' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Manage shared roster · DEV' })).not.toBeInTheDocument();
+  expect(screen.getByText('Roster management is unavailable until access to a selected restaurant is verified.')).toBeVisible();
+  expect(requests.every(request => request.table === 'organization_memberships')).toBe(true);
+});
+
+it('retains invalid selected weight text and unavailable payouts when returning from management', async () => {
+  editingVersions(); render(gate());
+  await screen.findByRole('button', { name: 'Manage roster' });
+  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+  await loaded(); choose(); editWeight('invalid');
+  await enterManagement();
+  fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
+  expect(weightInput()).toHaveValue('invalid');
+  expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('—');
+  expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
+});
+
+it('a failed independent management verification rechecks and clears the hidden shared preview without waiting for the minute timer', async () => {
+  editingVersions(); render(gate());
+  await screen.findByRole('button', { name: 'Manage roster' });
+  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+  await loaded(); choose(); addTemporary();
+  const preview = screen.getByRole('region', { name: 'Shared calculation preview' });
+  // Access disappears just before opening management; no focus/timer event fires.
+  tables.organization_memberships = [];
+  fireEvent.click(screen.getByRole('button', { name: 'Manage roster' }));
+  await screen.findByText('No restaurant access assigned');
+  expect(preview).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Add employee' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
+  expect(screen.queryByRole('region', { name: 'Shared calculation preview' })).not.toBeInTheDocument();
+});

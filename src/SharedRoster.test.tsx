@@ -51,9 +51,16 @@ function session(user = userA, expires = 3600): Session {
 function gate() {
   return <AuthGate runtime={{ mode: 'configured', project, client }} />;
 }
-const region = () => screen.getByRole('region', { name: 'Shared roster · DEV' });
+const region = () => screen.getByRole('region', { name: 'Restaurant workspace' });
 const refresh = () => fireEvent.click(screen.getByRole('button', { name: 'Refresh access / retry' }));
-async function loaded(org = orgA) { return screen.findByText(`${employee(org).name} · Active`); }
+async function loaded(org = orgA) {
+  const manage = await screen.findByRole('button', { name: 'Manage roster' });
+  await waitFor(() => expect(manage).toBeEnabled());
+  const selector = screen.queryByLabelText('Restaurant');
+  if (selector) expect(selector).toHaveValue(org.id);
+  else expect(screen.getByText(`Restaurant: ${org.name}`)).toBeVisible();
+  return manage;
+}
 
 beforeEach(() => {
   tables = { organization_memberships: [membership()], organizations: [orgA], job_roles: [role()], employees: [employee()] };
@@ -123,8 +130,10 @@ it('reads a single active membership with exact projections, filters and same-te
   const write = vi.spyOn(Storage.prototype, 'setItem');
   render(gate());
   expect(await loaded()).toBeVisible();
-  expect(within(region()).getByText(`Server ${orgA.name} · Inactive`)).toBeVisible();
-  expect(within(region()).getByText(`Default role: Server ${orgA.name} · Inactive`)).toBeVisible();
+  expect(within(region()).queryByRole('heading', { name: 'Shared job roles' })).not.toBeInTheDocument();
+  expect(within(region()).queryByRole('heading', { name: 'Shared employees' })).not.toBeInTheDocument();
+  expect(screen.queryByText(role().name, { exact: false })).not.toBeInTheDocument();
+  expect(screen.queryByText(employee().name, { exact: false })).not.toBeInTheDocument();
   expect(screen.getByRole('group', { name: 'Employee Local Fiction' })).toBeVisible();
   expect(screen.queryByText('Legacy Fiction')).not.toBeInTheDocument();
   await userEvent.type(screen.getByLabelText('Cash Tips ($)'), '100');
@@ -148,6 +157,7 @@ it('shows no access for nonmembers and revoked memberships without roster querie
   tables.organization_memberships = [{ ...membership(), is_active: false }];
   render(gate());
   expect(await screen.findByText('No restaurant access assigned')).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Manage roster' })).not.toBeInTheDocument();
   expect(requests.every(request => request.table === 'organization_memberships')).toBe(true);
   expect(screen.getByRole('heading', { name: 'Tip Calculator Dashboard' })).toBeVisible();
   expect(screen.queryByText(/invite|create restaurant|add member/i)).not.toBeInTheDocument();
@@ -164,7 +174,7 @@ it('requires explicit selection for multiple memberships and clears A while B lo
   intercept = (table, url) => table === 'employees' && url.searchParams.get('organization_id') === `eq.${orgA.id}` ? lateA.promise : undefined;
   refresh();
   await screen.findByLabelText('Restaurant');
-  expect(screen.getByText(`${employee().name} · Active`)).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Manage roster' })).toBeDisabled();
   await userEvent.selectOptions(screen.getByLabelText('Restaurant'), orgB.id);
   expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
   await loaded(orgB);
@@ -173,20 +183,22 @@ it('requires explicit selection for multiple memberships and clears A while B lo
   expect(await loaded(orgB)).toBeVisible();
 });
 
-it('shows an authorized empty roster only after membership is rechecked', async () => {
+it('keeps management available for an authorized empty roster only after membership is rechecked', async () => {
   tables.job_roles = []; tables.employees = [];
   render(gate());
-  expect(await screen.findByText('No shared employees.')).toBeVisible();
-  expect(screen.getByText('No shared job roles.')).toBeVisible();
+  expect(await loaded()).toBeEnabled();
+  expect(screen.queryByText('No shared employees.')).not.toBeInTheDocument();
+  expect(screen.queryByText('No shared job roles.')).not.toBeInTheDocument();
   expect(requests.filter(request => request.table === 'organization_memberships')).toHaveLength(2);
 });
 
-it('displays inactive employees and active default roles without treating either as calculator participants', async () => {
+it('omits inactive shared employees and active roles from the local calculator while retaining verified management access', async () => {
   tables.job_roles = [{ ...role(), is_active: true }];
   tables.employees = [{ ...employee(), is_active: false }];
   render(gate());
-  expect(await screen.findByText(`${employee().name} · Inactive`)).toBeVisible();
-  expect(screen.getByText(`Default role: ${role().name} · Active`)).toBeVisible();
+  expect(await loaded()).toBeEnabled();
+  expect(screen.queryByText(`${employee().name} · Inactive`)).not.toBeInTheDocument();
+  expect(screen.queryByText(`Default role: ${role().name} · Active`)).not.toBeInTheDocument();
   expect(screen.getByText('No employees added. Roster is empty.')).toBeVisible();
 });
 
@@ -215,7 +227,7 @@ it.each(['server', 'oversized'])('keeps freshly verified restaurant options afte
     expect(screen.getByLabelText('Restaurant')).toHaveValue(orgA.id);
     expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual([orgA.name, orgB.name]);
     expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Manage shared roster · DEV' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Manage roster' })).not.toBeInTheDocument();
     refresh();
     await waitFor(() => expect(screen.getByText('Checking restaurant access and loading shared roster…')).not.toBeVisible());
     expect(await screen.findByRole('alert')).toHaveTextContent(message);
@@ -262,7 +274,7 @@ it.each(['organization_memberships', 'organizations', 'revoked'] as const)('also
   expect(screen.queryByLabelText('Restaurant')).not.toBeInTheDocument();
   expect(screen.queryByRole('option')).not.toBeInTheDocument();
   expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Manage shared roster · DEV' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Manage roster' })).not.toBeInTheDocument();
 });
 
 it.each(['logout', 'account-switch'] as const)('clears retained options on %s and ignores the prior account\'s delayed roster failure', async event => {
@@ -297,8 +309,9 @@ it.each(['denied', 'network', 'server'])('clears a successful snapshot on %s fai
     return new Response(JSON.stringify({ code: kind === 'denied' ? '42501' : 'XX000', message: 'private server detail' }), { status: kind === 'denied' ? 403 : 500 });
   };
   refresh();
-  expect(screen.getByText(`${employee().name} · Active`)).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Manage roster' })).toBeDisabled();
   expect(await screen.findByRole('alert')).toHaveTextContent(kind === 'denied' ? /access denied/ : /Check your connection/);
+  expect(screen.queryByRole('button', { name: 'Manage roster' })).not.toBeInTheDocument();
   expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
   expect(screen.queryByText(/private .* detail/)).not.toBeInTheDocument();
   expect(screen.queryByText('No shared employees.')).not.toBeInTheDocument();
@@ -321,8 +334,9 @@ it('detects revocation on focus and never reports RLS-hidden reads as an empty r
   render(gate()); await loaded();
   tables.organization_memberships = [];
   fireEvent(window, new Event('focus'));
-  expect(screen.getByText(`${employee().name} · Active`)).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Manage roster' })).toBeDisabled();
   expect(await screen.findByText('No restaurant access assigned')).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Manage roster' })).not.toBeInTheDocument();
   expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
   expect(screen.queryByText('No shared employees.')).not.toBeInTheDocument();
 });
@@ -340,15 +354,16 @@ it('detects revocation between context and roster reads', async () => {
   expect(screen.queryByText('No shared employees.')).not.toBeInTheDocument();
 });
 
-it('retains 50 summary rows and local drafts through delayed focus, visibility, online and timer checks', async () => {
+it('omits a 50-person shared summary and preserves local drafts through delayed focus, visibility, online and timer checks', async () => {
   vi.useFakeTimers();
   tables.employees.push(...Array.from({ length: 49 }, (_, index) => ({ ...employee(), id: `fictional-${index}`, name: `Fictional Employee ${index}` })));
   const saved = JSON.stringify([{ id: 'local', name: 'Fictional Local', jobTitle: 'Server', weight: 100 }]);
   localStorage.setItem(accountRosterKey(project, userA.id), saved);
   render(gate());
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-  const row = screen.getByText(`${employee().name} · Active`);
-  const list = row.closest('ul')!;
+  const manage = screen.getByRole('button', { name: 'Manage roster' });
+  expect(manage).toBeEnabled();
+  expect(within(region()).queryByRole('list')).not.toBeInTheDocument();
   const cash = screen.getByLabelText('Cash Tips ($)');
   fireEvent.change(cash, { target: { value: '42.50' } });
   for (const event of ['focus', 'visibilitychange', 'online', 'minute']) {
@@ -359,15 +374,15 @@ it('retains 50 summary rows and local drafts through delayed focus, visibility, 
       else if (event === 'visibilitychange') document.dispatchEvent(new Event(event));
       else window.dispatchEvent(new Event(event));
     });
-    expect(row).toBeInTheDocument(); expect(row).toBeVisible();
-    expect(list.children).toHaveLength(50);
-    expect(row.closest('[inert]')).not.toBeNull();
-    expect(row.closest('[hidden]')).toBeNull();
+    expect(manage).toBeVisible(); expect(manage).toBeDisabled();
+    expect(within(region()).queryByRole('list')).not.toBeInTheDocument();
+    expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
     expect(cash).toBeVisible(); expect(cash).toHaveValue('42.50');
     intercept = () => undefined;
     await act(async () => { late.resolve(response([membership()])); await vi.advanceTimersByTimeAsync(0); });
-    expect(row).toBeVisible();
-    expect(screen.getByText(`${employee().name} · Active`)).toBe(row);
+    expect(manage).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Manage roster' })).toBe(manage);
+    expect(within(region()).queryByRole('list')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Cash Tips ($)')).toBe(cash);
   }
   expect(localStorage.getItem(accountRosterKey(project, userA.id))).toBe(saved);
@@ -418,7 +433,7 @@ it('clears account A synchronously on account switch and ignores its delayed res
   render(gate());
   await waitFor(() => expect(requests.some(request => request.table === 'employees')).toBe(true));
   await act(async () => emit('SIGNED_IN', session(userB)));
-  expect(screen.queryByRole('region', { name: 'Shared roster · DEV' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Restaurant workspace' })).not.toBeInTheDocument();
   await screen.findByText('No restaurant access assigned');
   await act(async () => lateA.resolve(response([employee()])));
   expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
@@ -433,7 +448,7 @@ it.each(['sign-out', 'cross-tab-sign-out'])('unmounts shared data on %s and igno
   await waitFor(() => expect(requests.at(-1)!.init.signal?.aborted).toBe(false));
   if (kind === 'sign-out') fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
   else await act(async () => emit('SIGNED_OUT', null));
-  expect(screen.queryByRole('region', { name: 'Shared roster · DEV' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Restaurant workspace' })).not.toBeInTheDocument();
   await act(async () => pending.resolve(response([membership()])));
   expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
   await screen.findByRole('button', { name: 'Sign in' });
@@ -444,9 +459,9 @@ it('unmounts shared content at verified session expiry', async () => {
   auth.getSession.mockResolvedValueOnce({ data: { session: session(userA, 2) }, error: null });
   render(gate());
   await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-  expect(screen.getByText(`${employee().name} · Active`)).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Manage roster' })).toBeEnabled();
   await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
-  expect(screen.queryByRole('region', { name: 'Shared roster · DEV' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Restaurant workspace' })).not.toBeInTheDocument();
   expect(screen.getByRole('alert')).toHaveTextContent('session expired');
 });
 
@@ -454,7 +469,7 @@ it('rechecks access every minute and cleans up timers, requests and listeners in
   vi.useFakeTimers();
   const view = render(<StrictMode><SharedRoster client={client} userId={userA.id} /></StrictMode>);
   await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-  expect(screen.getByText(`${employee().name} · Active`)).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Manage roster' })).toBeEnabled();
   tables.organization_memberships = [];
   await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
   expect(screen.getByText('No restaurant access assigned')).toBeVisible();

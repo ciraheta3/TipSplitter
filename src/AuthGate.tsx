@@ -30,15 +30,17 @@ export default function AuthGate({ runtime }: { runtime: Extract<AuthRuntime, { 
 
 function SignedInPreview({ client, userId, storageKey }: { client: SupabaseClient; userId: string; storageKey: string }) {
   const [source, setSource] = useState('local');
+  const [management, setManagement] = useState(false);
   return <>
-    <fieldset className="max-w-6xl mx-auto p-4 space-y-2">
-      <legend className="font-bold">Calculation source</legend>
-      <label className="flex items-center gap-3 min-h-12"><input type="radio" name="calculation-source" checked={source === 'local'} onChange={() => setSource('local')} />Browser-local roster</label>
-      <label className="flex items-center gap-3 min-h-12"><input type="radio" name="calculation-source" checked={source === 'shared'} onChange={() => setSource('shared')} />Restaurant shared roster</label>
-      <p className="text-sm">Switching sources keeps your local roster and inputs. Leaving shared mode clears its temporary preview.</p>
-    </fieldset>
-    <SharedRoster client={client} userId={userId} calculationMode={source === 'shared'} />
-    <div hidden={source !== 'local'}><Calculator storageKey={storageKey} /></div>
+    <SharedRoster client={client} userId={userId} calculationMode={source === 'shared'} management={management} onManagementChange={setManagement} calculatorControls={
+      <fieldset className="space-y-2">
+        <legend className="font-bold">Calculation source</legend>
+        <label className="flex items-center gap-3 min-h-12"><input type="radio" name="calculation-source" checked={source === 'local'} onChange={() => setSource('local')} />Browser-local roster</label>
+        <label className="flex items-center gap-3 min-h-12"><input type="radio" name="calculation-source" checked={source === 'shared'} onChange={() => setSource('shared')} />Restaurant shared roster</label>
+        <p className="text-sm">Switching sources keeps your local roster and inputs. Leaving shared mode clears its temporary preview.</p>
+      </fieldset>
+    } />
+    <div hidden={management || source !== 'local'} inert={management || source !== 'local'}><Calculator storageKey={storageKey} /></div>
   </>;
 }
 

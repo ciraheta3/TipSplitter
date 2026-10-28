@@ -149,3 +149,16 @@ roster/table access, provisioning, lifecycle administration or financial-policy
 changes are included in that merged milestone. Merged PR #34 adds only
 shared reads, with no provisioning or calculator integration. Import, retention,
 recovery and synchronization decisions remain open.
+
+## Independent management view (Issue #48)
+
+The signed-in restaurant context offers a dedicated **Manage roster** view from
+both calculation sources, with **Back to calculator**. Ordinary view navigation
+preserves the mounted calculation; shared verification and revocation handling
+continue in the background. Management drafts require explicit discard before
+leaving, and restaurants can be switched after returning to the calculator.
+Existing admin/closer access, snapshot expiry, conflict and save-recovery rules
+remain unchanged. Permanent default edits require explicit calculator reload to
+replace a frozen preview. See [navigation and owner acceptance](SHARED-ROSTER-EDITING.md#independent-management-navigation-issue-48).
+Only existing roster management is included; future managerial features remain
+out of scope.
