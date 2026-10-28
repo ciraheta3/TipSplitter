@@ -211,8 +211,8 @@ function RosterManager({ client, userId, organizationId, onClose, refreshRevisio
       onSave={(draft, id) => void save(draft, id)} onCancel={() => { setLeaving(false); setEditor(undefined); }} />
     <button className={button} disabled={busy || checking || !!editor.conflict} onClick={revalidate}>Revalidate draft</button>
   </div> : null;
-  return <section aria-label="Manage shared roster · DEV" className="space-y-4">
-    <h3 className="sr-only">Manage shared roster · DEV</h3>
+  return <section aria-label="Restaurant roster management" className="space-y-4">
+    <h3 className="sr-only">Restaurant roster management</h3>
     <div className="flex flex-wrap gap-2">
       <button className={button} onClick={reset}>Reload management / discard draft</button>
       <button className={button} disabled={navigationBlocked} onClick={() => {
@@ -226,11 +226,11 @@ function RosterManager({ client, userId, organizationId, onClose, refreshRevisio
     </div>}
     <details className="text-sm text-gray-700 border rounded p-3">
       <summary className="cursor-pointer font-semibold">About roster defaults and draft safety</summary>
-      <p className="mt-2">Permanent default share weights, not fixed percentages or today’s shift participation. Shared records never enter the browser-local calculator.</p>
+      <p className="mt-2">These defaults apply to future calculations. Reload an existing calculation to use updated defaults. The local roster stays separate.</p>
       <p className="mt-2">Draft input stays open during routine access checks. Editing snapshots expire after one minute: revalidate before saving an expired draft. Cancel, reload/discard or close intentionally discards the draft; failed access verification also clears it. An interrupted request may still commit; inspect the roster before repeating an addition, even after restarting the page.</p>
     </details>
-    {checking && <p role="status">Verifying access and exact shared defaults…</p>}
-    {state.saving && <p role="status">Saving shared roster…</p>}
+    {checking && <p role="status">Checking roster access…</p>}
+    {state.saving && <p role="status">Saving roster…</p>}
     {state.message && <p role="status">{state.message}</p>}
     {recovery && saveState && <div role="alert" className="border rounded p-3 space-y-2">
       <p>{saveState.confirmed
@@ -253,11 +253,11 @@ function RosterManager({ client, userId, organizationId, onClose, refreshRevisio
         <h4 className="text-xl font-bold">Job roles</h4>
         <button className={`${button} bg-blue-700 text-white font-semibold w-full`} disabled={blocked || !!editor} onClick={() => openEditor({ kind: 'role', snapshot })}>Add role</button>
         {editor?.kind === 'role' && !editor.row && inlineEditor}
-        {!roles.length && <p>No shared job roles.</p>}
+        {!roles.length && <p>No job roles.</p>}
         <ul aria-label="Job roles" className="space-y-3">{roles.map(row => <li key={row.id} className="break-words border rounded p-3 bg-white space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0"><p className="font-semibold">{row.name} · {row.is_active ? 'Active' : 'Inactive'}</p><p className="text-sm">Default share weight: {row.default_weight}</p></div>
-            <button className={button} disabled={blocked || !!editor} aria-label={`Edit shared role ${row.name}`} onClick={() => openEditor({ kind: 'role', row, snapshot })}>Edit</button>
+            <button className={button} disabled={blocked || !!editor} aria-label={`Edit role ${row.name}`} onClick={() => openEditor({ kind: 'role', row, snapshot })}>Edit</button>
           </div>
           {editor?.kind === 'role' && editor.row?.id === row.id && inlineEditor}
         </li>)}</ul>
@@ -267,7 +267,7 @@ function RosterManager({ client, userId, organizationId, onClose, refreshRevisio
         <button className={`${button} bg-blue-700 text-white font-semibold w-full`} disabled={blocked || !!editor || !snapshot.roles.some(row => row.is_active)} onClick={() => openEditor({ kind: 'employee', snapshot })}>Add employee</button>
         {editor?.kind === 'employee' && !editor.row && inlineEditor}
         {!snapshot.roles.some(row => row.is_active) && <p>Add or activate a role before adding an employee.</p>}
-        {!employees.length && <p>No shared employees.</p>}
+        {!employees.length && <p>No employees.</p>}
         {editor && <p className="text-sm">Save or cancel the current draft before opening another editor. Its employee group stays open while editing.</p>}
         <div className="space-y-3">{groups.map(({ role, employees: rows }) => {
           const editingGroup = editor?.kind === 'employee' && editor.row?.default_role_id === role.id;
@@ -291,7 +291,7 @@ function RosterManager({ client, userId, organizationId, onClose, refreshRevisio
                     <p className="text-sm">Default role: {role.name} · {role.is_active ? 'Active' : 'Inactive'}</p>
                     <p className="text-sm">Effective default share weight: {row.default_weight_override ?? role.default_weight} · {source}</p>
                   </div>
-                  <button className={button} disabled={blocked || !!editor} aria-label={`Edit shared employee ${row.name}${duplicate ? ` (${role.name}, ID: ${row.id})` : ''}`} onClick={() => openEditor({ kind: 'employee', row, snapshot })}>Edit</button>
+                  <button className={button} disabled={blocked || !!editor} aria-label={`Edit employee ${row.name}${duplicate ? ` (${role.name}, ID: ${row.id})` : ''}`} onClick={() => openEditor({ kind: 'employee', row, snapshot })}>Edit</button>
                 </div>
                 {editor?.kind === 'employee' && editor.row?.id === row.id && inlineEditor}
               </li>;
@@ -333,18 +333,18 @@ function RosterForm({ editor, snapshot, busy, saveBlocked, onSave, onCancel }: {
   const [weight, setWeight] = useState(editor.kind === 'role' ? editor.row?.default_weight ?? '' : editor.row?.default_weight_override ?? '');
   const [roleId, setRoleId] = useState(editor.kind === 'employee' ? editor.row?.default_role_id ?? '' : '');
   const existingRole = editor.kind === 'employee' ? editor.row?.default_role_id : undefined;
-  return <form aria-label={`${editor.row ? 'Edit' : 'Add'} shared ${editor.kind === 'role' ? 'job role' : 'employee'}`} className="border rounded p-4 space-y-4" onSubmit={event => {
+  return <form aria-label={`${editor.row ? 'Edit' : 'Add'} ${editor.kind === 'role' ? 'job role' : 'employee'}`} className="border rounded p-4 space-y-4" onSubmit={event => {
     event.preventDefault();
     if (busy || saveBlocked) return;
     onSave(editor.kind === 'role' ? { kind: 'role', name, weight, active } : { kind: 'employee', name, weight, active, roleId }, editor.row?.id);
   }}>
-    <h4 className="font-semibold">{editor.row ? 'Edit' : 'Add'} shared {editor.kind === 'role' ? 'job role' : 'employee'}</h4>
+    <h4 className="font-semibold">{editor.row ? 'Edit' : 'Add'} {editor.kind === 'role' ? 'job role' : 'employee'}</h4>
     <fieldset disabled={busy} className="space-y-3">
-      <div><label htmlFor={`${id}-name`} className="block">Shared {editor.kind} name</label>
+      <div><label htmlFor={`${id}-name`} className="block">{editor.kind === 'role' ? 'Role' : 'Employee'} name</label>
         <input ref={nameInput} id={`${id}-name`} className="border rounded p-2 w-full" required value={name} onChange={event => setName(event.target.value)} />
         <p className="text-sm">Up to {editor.kind === 'role' ? 100 : 160} characters.</p>
       </div>
-      {editor.kind === 'employee' && <div><label htmlFor={`${id}-role`} className="block">Default shared job role</label>
+      {editor.kind === 'employee' && <div><label htmlFor={`${id}-role`} className="block">Default job role</label>
         <select id={`${id}-role`} className="border rounded p-2 w-full" required value={roleId} onChange={event => setRoleId(event.target.value)}>
           <option value="" disabled>Choose an active role</option>
           {[...snapshot.roles].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)).map(row => <option key={row.id} value={row.id} disabled={!row.is_active && row.id !== existingRole}>{row.name}{row.is_active ? '' : ' (Inactive; existing link only)'}</option>)}
@@ -355,8 +355,8 @@ function RosterForm({ editor, snapshot, busy, saveBlocked, onSave, onCancel }: {
         <input id={`${id}-weight`} className="border rounded p-2 w-full" type="text" inputMode="decimal" required={editor.kind === 'role'} value={weight} onChange={event => setWeight(event.target.value)} />
         <p className="text-sm">Nonnegative shares, at most two decimal places. Zero is explicit zero; an empty employee override inherits the role default.</p>
       </div>
-      <label className="flex items-center gap-2"><input type="checkbox" checked={active} onChange={event => setActive(event.target.checked)} />Active shared {editor.kind}</label>
-      <div className="flex flex-wrap gap-2"><button className={button} type="submit" disabled={saveBlocked}>{busy ? 'Saving…' : 'Save shared roster'}</button><button className={button} type="button" onClick={onCancel}>Cancel draft</button></div>
+      <label className="flex items-center gap-2"><input type="checkbox" checked={active} onChange={event => setActive(event.target.checked)} />Active {editor.kind}</label>
+      <div className="flex flex-wrap gap-2"><button className={button} type="submit" disabled={saveBlocked}>{busy ? 'Saving…' : 'Save roster'}</button><button className={button} type="button" onClick={onCancel}>Cancel draft</button></div>
     </fieldset>
   </form>;
 }

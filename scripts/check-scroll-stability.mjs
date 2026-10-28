@@ -22,9 +22,9 @@ try {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`${server.resolvedUrls.local[0]}scripts/fixtures/scroll.html`);
-    await page.getByText(/^Synthetic Employee 50 · Active/).waitFor();
+    await page.getByRole('button', { name: 'Manage roster', exact: true }).waitFor();
     if (mode === 'shared') {
-      await page.getByRole('radio', { name: 'Restaurant shared roster', exact: true }).check();
+      await page.getByRole('radio', { name: 'Restaurant roster', exact: true }).check();
       const participants = page.getByRole('group', { name: 'Participating employees', exact: true });
       await participants.waitFor();
       const toggles = participants.getByRole('button', { expanded: false });
@@ -78,7 +78,7 @@ try {
         requests: window.scrollFixture.events.filter(event => event.type.startsWith('request:')).length,
         scrollY, documentHeight: document.documentElement.scrollHeight,
         summaryHeight: summary.getBoundingClientRect().height,
-        summaryVisible: summary.querySelector('li') ? window.getComputedStyle(summary.querySelector('li')).visibility === 'visible' : false,
+        summaryVisible: [...summary.querySelectorAll('button')].some(button => button.textContent === 'Manage roster'),
         participantHeight: participantList?.getBoundingClientRect().height ?? 0,
         participantVisible: participantList ? window.getComputedStyle(participantList).visibility === 'visible' : null,
         cashConnected: window.scrollProbe.cash.isConnected,
@@ -107,8 +107,8 @@ try {
       await page.waitForTimeout(150);
       const during = await sample();
       await page.evaluate(() => window.scrollFixture.release());
-      await page.getByRole('heading', { name: 'Tip Calculator Dashboard', exact: true }).waitFor();
-      await page.getByText('Checking restaurant access and loading shared roster…', { exact: true }).waitFor({ state: 'hidden' });
+      await page.getByRole('heading', { name: 'Calculation preview · Not saved', exact: true }).waitFor();
+      await page.getByText('Checking restaurant access…', { exact: true }).waitFor({ state: 'hidden' });
       await page.waitForTimeout(150);
       const after = await sample();
       report.cases.push({ mode, trigger, before, during, after });

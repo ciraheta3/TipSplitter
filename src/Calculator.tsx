@@ -128,10 +128,10 @@ export default function Calculator({ storageKey, shared }: Props) {
     <div hidden={shared?.unavailable} className="min-h-screen bg-gray-50 text-gray-900 p-4 md:p-8 font-sans">
       <div className="max-w-4xl mx-auto space-y-6">
 
-        {/* Verification Dashboard */}
+        {/* Calculation summary */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4 border-b pb-4">
-            <h1 className="text-2xl font-bold text-gray-800">Tip Calculator Dashboard</h1>
+            <div><h2 className="text-2xl font-bold text-gray-800">Calculation preview · Not saved</h2><p className="text-sm text-gray-600 mt-1">Preview amounts are not recorded payments.</p></div>
             <label className="flex items-center space-x-2 text-sm font-semibold cursor-pointer">
               <input
                 type="checkbox"
@@ -161,7 +161,7 @@ export default function Calculator({ storageKey, shared }: Props) {
               </p>
             </div>
           </div>
-          <p className="text-sm text-gray-600 mt-4">Preview only. Remainder = collected tips − allocated tips. Positive means unassigned; negative means overpaid. Leftover handling is separate.</p>
+          <p className="text-sm text-gray-600 mt-4">Remainder = collected tips − allocated tips. Positive means unassigned; negative means overpaid. Leftovers are not distributed.</p>
           {calculation?.status === 'no-positive-weight' && (
             <p role="status" className="text-sm text-gray-700 mt-2">{shared ? 'Select a participant with positive weight to allocate tips.' : 'Add an employee with positive weight to allocate tips.'} The entire pool remains unassigned.</p>
           )}
@@ -220,7 +220,7 @@ export default function Calculator({ storageKey, shared }: Props) {
               <span className="text-sm text-gray-500 font-semibold">Total Shares: {calculation ? formatCents(calculation.totalWeightUnits).replace(/\.00$/, '') : '—'}</span>
             </div>
 
-            <p className="text-sm text-gray-600 mb-3">{shared ? `Restaurant shared roster · ${shared.restaurantName}. Temporary preview only; no saved shift or payment.` : 'Browser-local roster. Saved only in this browser; not synchronized to Supabase. Use fictional data for DEV testing.'}</p>
+            <p className="text-sm text-gray-600 mb-3">{shared ? `Restaurant roster · ${shared.restaurantName}` : 'Local roster · Saved in this browser only.'}</p>
             {!shared && roster.error && <p role="alert" className="text-sm text-red-700 mb-3">{roster.error}</p>}
             {displayEmployees.length === 0 ? (
               <p className="text-gray-400 text-center py-8">{shared ? 'No participants selected.' : 'No employees added. Roster is empty.'}</p>
@@ -229,7 +229,7 @@ export default function Calculator({ storageKey, shared }: Props) {
                 {displayGroups.map(group => <Fragment key={group.id}>
                   {shared && <h3 className="font-semibold border-b pt-2 pb-1 break-words">{group.name}</h3>}
                   {group.participants.map(emp => (
-                  <div key={emp.id} role="group" aria-label={`Employee ${emp.name}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-gray-50 border border-gray-100 rounded">
+                  <div key={emp.id} role="group" aria-label={`Employee ${emp.name}`} className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-3 p-3 bg-gray-50 border border-gray-100 rounded">
                     <div className="min-w-0 break-words">
                       <p className="font-bold">{emp.name} <span className="text-xs text-gray-500 font-normal bg-gray-200 px-2 py-1 rounded ml-2">{emp.jobTitle}</span>{emp.isTemporary && <span className="ml-2 rounded bg-amber-100 px-2 py-1 text-xs">Temporary</span>}</p>
                       {shared ? <div className="space-y-2 mt-2">
@@ -258,12 +258,12 @@ export default function Calculator({ storageKey, shared }: Props) {
                       </p>
                       {shared && <button
                         type="button"
-                        aria-label={`Exclude ${emp.name} from calculation${shared.selectedRows.filter(row => row.name === emp.name).length > 1 ? ` (${emp.jobTitle}${emp.isTemporary ? ', Temporary' : ''}, ID: ${emp.id})` : ''}`}
+                        aria-label={`Exclude from calculation · ${emp.name}${shared.selectedRows.filter(row => row.name === emp.name).length > 1 ? ` (${emp.jobTitle}${emp.isTemporary ? ', Temporary' : ''}, ID: ${emp.id})` : ''}`}
                         disabled={shared.exclusionDisabled}
                         onClick={() => shared.onExclude(emp.id)}
-                        className="min-h-12 min-w-12 rounded border border-red-700 text-red-800 text-xl font-bold focus-visible:outline-2 focus-visible:outline-blue-700 disabled:opacity-50"
+                        className="min-h-12 min-w-12 rounded border border-red-700 text-red-800 px-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-blue-700 disabled:opacity-50"
                       >
-                        <span aria-hidden="true">×</span>
+                        Exclude from calculation
                       </button>}
                       {!shared && <button
                         aria-label={`Remove ${emp.name}`}

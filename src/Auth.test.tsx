@@ -44,7 +44,7 @@ const auth = {
     return { data: { subscription: { unsubscribe } } };
   }),
 };
-const dashboard = () => screen.queryByRole('heading', { name: 'Tip Calculator Dashboard' });
+const dashboard = () => screen.queryByRole('heading', { name: 'Calculation preview · Not saved' });
 async function emit(event: AuthChangeEvent, value: Session | null) {
   await act(async () => { listeners.forEach(callback => callback(event, value)); });
   // Wait for the callback's deferred verification, without timing sleeps.
@@ -105,10 +105,10 @@ it('keeps initial restoration and user verification behind a loading gate', asyn
 it('signs in using password Auth, verifies identity and clears the password', async () => {
   render(<App />);
   await login();
-  expect(await screen.findByRole('heading', { name: 'Tip Calculator Dashboard' })).toBeVisible();
+  expect(await screen.findByRole('heading', { name: 'Calculation preview · Not saved' })).toBeVisible();
   expect(auth.signInWithPassword).toHaveBeenCalledWith({ email: 'preview-a@example.test', password: 'fictional-password-only' });
   expect(auth.getUser).toHaveBeenCalledTimes(1);
-  expect(screen.getByText(/Signing in does not grant restaurant membership/)).toBeVisible();
+  expect(screen.getByText('Preview amounts are not recorded payments.')).toBeVisible();
   await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
   expect(await screen.findByLabelText('Password')).toHaveValue('');
   expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
@@ -273,7 +273,7 @@ it('unsubscribes on unmount and tolerates StrictMode effect replay', async () =>
 it('marks credential-free preview as unauthenticated and fails closed on invalid configuration', () => {
   vi.mocked(getAuthRuntime).mockReturnValue({ mode: 'local' });
   const view = render(<App />);
-  expect(screen.getByText(/Local-only prototype — not signed in/)).toBeVisible();
+  expect(screen.getByText(/Local preview · Not signed in/)).toBeVisible();
   expect(dashboard()).toBeVisible();
   view.unmount();
   vi.mocked(getAuthRuntime).mockReturnValue({ mode: 'error', message: 'Fictional setup error' });
@@ -370,4 +370,22 @@ it('clears login drafts when another tab signs in and then signs out', async () 
   await emit('SIGNED_OUT', null);
   expect(screen.getByLabelText('Email')).toHaveValue('');
   expect(screen.getByLabelText('Password')).toHaveValue('');
+});
+
+it('shows one application heading and DEV indicator with clear local source and preview status', async () => {
+  auth.getSession.mockResolvedValue({ data: { session: session() }, error: null });
+  render(<App />);
+  await screen.findByRole('button', { name: 'Sign out' });
+  expect(screen.getByRole('heading', { level: 1, name: 'TipSplitter' })).toBeVisible();
+  expect(screen.getAllByText('DEV', { exact: true })).toHaveLength(1);
+  expect(screen.getByLabelText('Development environment')).toBeVisible();
+  expect(screen.getByRole('radio', { name: 'Local roster' })).toBeChecked();
+  expect(screen.getByRole('radio', { name: 'Restaurant roster' })).not.toBeChecked();
+  expect(screen.getByRole('heading', { name: 'Calculation preview · Not saved' })).toBeVisible();
+  expect(screen.getByText('Preview amounts are not recorded payments.')).toBeVisible();
+  expect(screen.getByText('Local roster · Saved in this browser only.')).toBeVisible();
+  expect(screen.getByText(/Leaving Restaurant roster clears its selections, temporary weights and temporary participants/)).toBeVisible();
+  expect(screen.queryByText(/Supabase|tenant records|authentication alone|Signing in does not grant/i)).not.toBeInTheDocument();
+  expect(await screen.findByText('No restaurant access assigned')).toBeVisible();
+  expect(screen.getByText(/Contact the project owner for access/)).toBeVisible();
 });
