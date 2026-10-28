@@ -162,3 +162,13 @@ remain unchanged. Permanent default edits require explicit calculator reload to
 replace a frozen preview. See [navigation and owner acceptance](SHARED-ROSTER-EDITING.md#independent-management-navigation-issue-48).
 Only existing roster management is included; future managerial features remain
 out of scope.
+
+## Inline shared preview weights (Issue #53)
+
+Temporary share weights can be edited in either the role selector or Selected
+Participants. Both show the same exact draft text, including invalid input, and
+reset to the frozen shared default or original one-time weight. Invalid selected
+weights retain their editable row and block every payout until corrected, reset or
+excluded. This adds no permanent persistence or financial policy. Existing preview
+scope, access and management-navigation lifecycle rules apply. See the
+[implementation and pending iPad acceptance](SHARED-ROSTER-CALCULATOR.md#inline-temporary-share-weights-issue-53).

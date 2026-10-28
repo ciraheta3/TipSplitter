@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useId, useState } from 'react';
 import { groupCalculationParticipants } from './sharedCalculationGroups';
 import type { Distribution } from './calculation';
 import type { CalculationParticipant } from './sharedCalculationData';
@@ -49,7 +49,9 @@ type Props = {
   storageKey: string;
   shared?: {
     participants: CalculationParticipant[];
-    selectedRows: Omit<CalculationParticipant, 'weightUnits'>[];
+    selectedRows: (Omit<CalculationParticipant, 'weightUnits'> & { defaultWeightText: string; weightError?: string })[];
+    onWeightChange: (id: string, value: string) => void;
+    onResetWeight: (id: string) => void;
     onExclude: (id: string) => void;
     exclusionDisabled: boolean;
     restaurantName: string;
@@ -59,6 +61,7 @@ type Props = {
 };
 
 export default function Calculator({ storageKey, shared }: Props) {
+  const weightPrefix = useId();
   const [cashTip, setCashTip] = useState('');
   const [creditTip, setCreditTip] = useState('');
   const [roundToDollar, setRoundToDollar] = useState(false);
@@ -66,7 +69,7 @@ export default function Calculator({ storageKey, shared }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const { employees } = roster;
 
-  const displayEmployees = shared ? (shared.unavailable ? [] : shared.selectedRows) : employees.map(employee => ({ ...employee, weightText: String(employee.weight), isTemporary: false }));
+  const displayEmployees = shared ? (shared.unavailable ? [] : shared.selectedRows) : employees.map(employee => ({ ...employee, weightText: String(employee.weight), isTemporary: false, defaultWeightText: undefined, weightError: undefined }));
   const displayGroups = shared ? groupCalculationParticipants(shared.unavailable ? [] : shared.selectedRows).filter(group => group.participants.length) : [{ id: 'local', name: '', participants: displayEmployees }];
   const inputPrefix = shared ? 'shared-' : '';
 
@@ -229,7 +232,25 @@ export default function Calculator({ storageKey, shared }: Props) {
                   <div key={emp.id} role="group" aria-label={`Employee ${emp.name}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-gray-50 border border-gray-100 rounded">
                     <div className="min-w-0 break-words">
                       <p className="font-bold">{emp.name} <span className="text-xs text-gray-500 font-normal bg-gray-200 px-2 py-1 rounded ml-2">{emp.jobTitle}</span>{emp.isTemporary && <span className="ml-2 rounded bg-amber-100 px-2 py-1 text-xs">Temporary</span>}</p>
-                      <p className="text-sm text-gray-600 mt-1">{shared ? 'Share weight' : 'Weight'}: {emp.weightText}</p>
+                      {shared ? <div className="space-y-2 mt-2">
+                        <label htmlFor={`${weightPrefix}-${emp.id}`} className="block text-sm font-semibold">
+                          Temporary share weight in results · {emp.name}{' '}
+                          <span className="sr-only">({emp.jobTitle}, ID: {emp.id})</span>
+                        </label>
+                        <input id={`${weightPrefix}-${emp.id}`} type="text" inputMode="decimal"
+                          className="w-full sm:w-48 min-h-12 border rounded p-3 text-base"
+                          value={emp.weightText} disabled={shared.exclusionDisabled}
+                          aria-invalid={!!emp.weightError}
+                          aria-describedby={`${weightPrefix}-${emp.id}-default${emp.weightError ? ` ${weightPrefix}-${emp.id}-error` : ''}`}
+                          onChange={event => shared.onWeightChange(emp.id, event.target.value)} />
+                        <p id={`${weightPrefix}-${emp.id}-default`} className="text-sm text-gray-600">
+                          {emp.isTemporary ? 'Original temporary weight' : 'Loaded default share weight'}: {emp.defaultWeightText}
+                        </p>
+                        <button type="button" className="min-h-12 rounded border border-blue-700 px-4 py-3 disabled:opacity-50"
+                          aria-label={`Reset ${emp.name} to default in results (ID: ${emp.id})`}
+                          disabled={shared.exclusionDisabled} onClick={() => shared.onResetWeight(emp.id)}>Reset to default</button>
+                        {emp.weightError && <p id={`${weightPrefix}-${emp.id}-error`} role="alert" className="text-sm text-red-700">{emp.weightError}</p>}
+                      </div> : <p className="text-sm text-gray-600 mt-1">Weight: {emp.weightText}</p>}
                     </div>
                     <div className="flex items-center justify-between shrink-0 space-x-4">
                       <p className="font-mono font-bold text-lg text-blue-700">

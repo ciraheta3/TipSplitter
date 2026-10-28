@@ -241,3 +241,65 @@ Verification on 2026-10-25 (Linux, Node 24.19.0 / npm 11.9.0): `npm run check`
 passed all 397 frontend tests (105 shared-calculation tests), 14 offline provisioning
 checks, 41 offline roster harness tests, ESLint, TypeScript and the Vite build.
 `git diff --check` passed. No database, live Supabase or native Safari checks ran.
+
+## Inline temporary share weights (Issue #53)
+
+Selected Participants now has a decimal-text input and **Reset to default** in
+each shared or temporary result row. The role-selector and result inputs both
+read the exact `weightInputs` Map owned by `SharedCalculation`; change/reset
+callbacks accept only selected, eligible IDs within the current editable scope.
+`Calculator` owns no editable weight state. The result row also displays its
+loaded default (or original temporary weight), with validation linked to its input.
+Both locations reset temporary participants to their original exact addition text.
+No permanent default, Supabase record or browser-local roster is changed.
+
+Invalid text remains in both fields and keeps the selected row and exclusion
+control visible. All payout, allocated, total-share and remainder outputs stay
+unavailable until corrected, reset or excluded. Zero and intermediate decimal text
+remain exact; the unchanged parser/engine rejects negative values, excess precision,
+unsafe individual weights and unsafe selected totals. Exclude/reselect preserves
+the current draft. Role grouping, sorting and bulk selection are unchanged.
+
+Distinct result IDs use a stable React prefix and participant ID. Labels identify
+location, name, role and ID; inputs use text/decimal mode, 48px minimum height and
+16px text. Existing keyed rows stay mounted while typing, including invalid input
+and successful routine verification. No input-driven focus or scroll effect is
+added. Both locations disable weight/reset controls during pending checks and
+management navigation; callbacks also check authorization, selection, current
+online status and visibility. Existing failure, revocation, reload, source and
+account/restaurant clearing rules still apply.
+
+Owner iPad Safari acceptance is **pending**, using synthetic participants in both
+portrait and landscape:
+
+- Select two participants, enter $100 and edit either location from 100:50 to 50:50
+  and 100:50. Confirm both exact texts and $50/$50 or $66.66/$33.33 + $0.01;
+  repeat whole-dollar mode for $66/$33 + $1. Collapse the role and edit in results.
+- Type `0.`, `0`, blank, `-1` and `0.001`; verify retained text, nearby errors and
+  unavailable payouts for invalid input. Correct, exclude/reselect and reset;
+  confirm loaded defaults and original temporary weights, including duplicate names.
+- Check decimal keyboard, 48px targets, long names, VoiceOver labels/descriptions,
+  external-keyboard Tab/typing/Enter on reset, focus/caret and scroll stability.
+  Repeat with the software keyboard open and after changing orientation.
+- Trigger a routine check, visit management and return: valid/invalid drafts must
+  survive and retained inputs must be inert while checking/hidden. Offline or
+  revoked access, failed verification, sign-out, restaurant/source changes and
+  explicit reload must retain the established fail-closed/reset behavior.
+- Confirm browser-local add/remove, payouts and persistence are unchanged. Shared
+  preview edits must not change any permanent defaults.
+
+React/SDK tests use mocked transports and synthetic data. They do not establish
+native Safari behavior or real Auth/PostgREST/RLS verification. No hosted DEV,
+deployment, SQL/RLS or calculation-engine change is included.
+
+Issue #53 verification on 2026-10-28 (Linux, Node 24.19.0 / npm 11.9.0):
+`npm run check` passed 427 frontend tests in eight files (123 shared-calculation
+regressions), 14 offline provisioning checks, 41 offline roster harness tests,
+ESLint, TypeScript and Vite build. `git diff --check` passed. Seven new test cases
+cover bidirectional exact text, both payout modes/remainders, reset snapshots,
+keyboard focus/DOM retention, duplicate shared/temporary IDs, temporary reset,
+exclude/reselect, pending/hidden/offline callback guards and successful access
+checks. Existing invalid/overflow, account/restaurant/sign-out and management
+regressions now also exercise edits originating in the result input. Browser-local
+regressions remain in the full suite. Native device and live backend checks were
+not run.
