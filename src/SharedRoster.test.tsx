@@ -138,7 +138,7 @@ it('reads a single active membership with exact projections, filters and same-te
   expect(screen.queryByText('Legacy Fiction')).not.toBeInTheDocument();
   await userEvent.type(screen.getByLabelText('Cash Tips ($)'), '100');
   expect(screen.getByRole('group', { name: 'Employee Local Fiction' })).toHaveTextContent('$100.00');
-  expect(write).not.toHaveBeenCalled();
+  expect(write.mock.calls.every(([key]) => key.startsWith('tipsplitter:draft:v1:'))).toBe(true);
   expect(localStorage.getItem('employees')).toBe(legacy);
   expect(localStorage.getItem(accountRosterKey(project, userA.id))).toBe(own);
   expect(within(region()).getAllByRole('button')).toHaveLength(2);
@@ -159,7 +159,7 @@ it('shows no access for nonmembers and revoked memberships without roster querie
   expect(await screen.findByText('No restaurant access assigned')).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Manage roster' })).not.toBeInTheDocument();
   expect(requests.every(request => request.table === 'organization_memberships')).toBe(true);
-  expect(screen.getByRole('heading', { name: 'Calculation preview · Not saved' })).toBeVisible();
+  expect(screen.getByRole('heading', { name: 'Calculation preview' })).toBeVisible();
   expect(screen.queryByText(/invite|create restaurant|add member/i)).not.toBeInTheDocument();
 });
 

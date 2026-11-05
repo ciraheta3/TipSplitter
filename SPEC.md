@@ -31,3 +31,11 @@ Issue #14 schema verification is separate: `npm run check:db` executes SQL migra
 and assertions in disposable local PostgreSQL 17, with no hosted credentials. The
 frontend checks do not validate migrations. See [docs/BACKEND.md](docs/BACKEND.md)
 for exact weight storage, tenant constraints, deny-by-default access and limitations.
+
+## Device-local calculation drafts (Issue #56)
+
+[Draft recovery](docs/CALCULATION-DRAFTS.md) supersedes the memory-only calculation
+persistence descriptions above. Versioned browser storage saves raw inputs during
+edits. Shared recovery requires current Auth, membership and complete roster
+verification; changed references require explicit review. No financial rules,
+Supabase tables, RLS or permanent roster persistence change.

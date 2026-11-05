@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 import { StrictMode } from 'react';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { AuthChangeEvent, Session, SupabaseClient, User } from '@supabase/supabase-js';
@@ -44,7 +44,7 @@ const auth = {
     return { data: { subscription: { unsubscribe } } };
   }),
 };
-const dashboard = () => screen.queryByRole('heading', { name: 'Calculation preview · Not saved' });
+const dashboard = () => screen.queryByRole('heading', { name: 'Calculation preview' });
 async function emit(event: AuthChangeEvent, value: Session | null) {
   await act(async () => { listeners.forEach(callback => callback(event, value)); });
   // Wait for the callback's deferred verification, without timing sleeps.
@@ -105,7 +105,7 @@ it('keeps initial restoration and user verification behind a loading gate', asyn
 it('signs in using password Auth, verifies identity and clears the password', async () => {
   render(<App />);
   await login();
-  expect(await screen.findByRole('heading', { name: 'Calculation preview · Not saved' })).toBeVisible();
+  expect(await screen.findByRole('heading', { name: 'Calculation preview' })).toBeVisible();
   expect(auth.signInWithPassword).toHaveBeenCalledWith({ email: 'preview-a@example.test', password: 'fictional-password-only' });
   expect(auth.getUser).toHaveBeenCalledTimes(1);
   expect(screen.getByText('Preview amounts are not recorded payments.')).toBeVisible();
@@ -381,11 +381,74 @@ it('shows one application heading and DEV indicator with clear local source and 
   expect(screen.getByLabelText('Development environment')).toBeVisible();
   expect(screen.getByRole('radio', { name: 'Local roster' })).toBeChecked();
   expect(screen.getByRole('radio', { name: 'Restaurant roster' })).not.toBeChecked();
-  expect(screen.getByRole('heading', { name: 'Calculation preview · Not saved' })).toBeVisible();
+  expect(screen.getByRole('heading', { name: 'Calculation preview' })).toBeVisible();
   expect(screen.getByText('Preview amounts are not recorded payments.')).toBeVisible();
   expect(screen.getByText('Local roster · Saved in this browser only.')).toBeVisible();
   expect(screen.getByText(/Leaving Restaurant roster clears its selections, temporary weights and temporary participants/)).toBeVisible();
   expect(screen.queryByText(/Supabase|tenant records|authentication alone|Signing in does not grant/i)).not.toBeInTheDocument();
   expect(await screen.findByText('No restaurant access assigned')).toBeVisible();
   expect(screen.getByText(/Contact the project owner for access/)).toBeVisible();
+});
+
+it('restores account-local tips only after verified Auth and clears persistence on explicit sign-out', async () => {
+  const { emptyDraft, localDraftKey, readDraft, saveDraft } = await import('./calculationDraft');
+  const key = localDraftKey(accountRosterKey(project, userA.id));
+  saveDraft(key, { ...emptyDraft(), cashTip: '42.50', roundToDollar: true });
+  const pending = deferred<{ data: { user: User }; error: null }>();
+  auth.getSession.mockResolvedValue({ data: { session: session() }, error: null });
+  auth.getUser.mockReturnValueOnce(pending.promise);
+  render(<App />);
+  expect(screen.queryByLabelText('Cash Tips ($)')).not.toBeInTheDocument();
+  await act(async () => pending.resolve({ data: { user: userA }, error: null }));
+  expect(await screen.findByLabelText('Cash Tips ($)')).toHaveValue('42.50');
+  expect(screen.getByLabelText('Round down to whole dollar')).toBeChecked();
+  await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+  expect(readDraft(key).value).toBeUndefined();
+  await login();
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('');
+});
+
+it('clears the previous account draft on account switch without overwriting the next account draft', async () => {
+  const { emptyDraft, localDraftKey, readDraft, saveDraft } = await import('./calculationDraft');
+  const keyA = localDraftKey(accountRosterKey(project, userA.id));
+  const keyB = localDraftKey(accountRosterKey(project, userB.id));
+  saveDraft(keyA, { ...emptyDraft(), cashTip: '42.50' });
+  saveDraft(keyB, { ...emptyDraft(), cashTip: '8.25' });
+  auth.getSession.mockResolvedValue({ data: { session: session() }, error: null });
+  render(<App />);
+  expect(await screen.findByLabelText('Cash Tips ($)')).toHaveValue('42.50');
+  await emit('SIGNED_IN', session(userB));
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('8.25');
+  expect(readDraft(keyA).value).toBeUndefined();
+  expect(readDraft(keyB).value!.cashTip).toBe('8.25');
+});
+
+it('clears a candidate account draft on failed initial Auth verification', async () => {
+  const { emptyDraft, localDraftKey, readDraft, saveDraft } = await import('./calculationDraft');
+  const key = localDraftKey(accountRosterKey(project, userA.id));
+  saveDraft(key, { ...emptyDraft(), cashTip: '42.50' });
+  auth.getSession.mockResolvedValue({ data: { session: session() }, error: null });
+  auth.getUser.mockResolvedValue({ data: { user: null }, error: { message: 'unverified' } });
+  render(<App />);
+  await screen.findByRole('alert');
+  expect(screen.queryByLabelText('Cash Tips ($)')).not.toBeInTheDocument();
+  expect(readDraft(key).value).toBeUndefined();
+});
+
+it('remounts the Auth gate on project/client change before reading another project draft', async () => {
+  const { emptyDraft, localDraftKey, saveDraft } = await import('./calculationDraft');
+  const { default: AuthGate } = await import('./AuthGate');
+  const firstClient = { auth } as unknown as SupabaseClient;
+  auth.getSession.mockResolvedValue({ data: { session: session() }, error: null });
+  const view = render(<AuthGate runtime={{ mode: 'configured', project, client: firstClient }} />);
+  await screen.findByLabelText('Cash Tips ($)');
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '42.50' } });
+  const nextProject = 'https://another-fictional.example.test';
+  saveDraft(localDraftKey(accountRosterKey(nextProject, userA.id)), { ...emptyDraft(), cashTip: '8.25' });
+  const pending = deferred<{ data: { user: User }; error: null }>();
+  auth.getUser.mockReturnValueOnce(pending.promise);
+  view.rerender(<AuthGate runtime={{ mode: 'configured', project: nextProject, client: { auth } as unknown as SupabaseClient }} />);
+  expect(screen.queryByLabelText('Cash Tips ($)')).not.toBeInTheDocument();
+  await act(async () => pending.resolve({ data: { user: userA }, error: null }));
+  expect(await screen.findByLabelText('Cash Tips ($)')).toHaveValue('8.25');
 });

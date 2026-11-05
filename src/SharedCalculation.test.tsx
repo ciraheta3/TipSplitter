@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
+import { StrictMode } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -286,7 +287,7 @@ it.each(['failed', 'partial', 'revoked'])('clears the previous preview and fails
   expect(await screen.findByRole('alert')).toHaveTextContent('previous preview was cleared');
   expect(screen.queryByText('Fictional Avery · Fictional server')).not.toBeInTheDocument();
   expect(screen.queryByRole('group', { name: 'Employee Fictional Avery' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('heading', { name: 'Calculation preview · Not saved' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Calculation preview' })).not.toBeInTheDocument();
 });
 
 it.each(['account', 'project', 'restaurant'])('rejects late exact reads after a %s prop switch', async kind => {
@@ -361,7 +362,7 @@ it('preserves the browser-local roster, inputs and storage through explicit sour
   const write = vi.spyOn(Storage.prototype, 'setItem');
   const read = vi.spyOn(Storage.prototype, 'getItem');
   render(<AuthGate runtime={{ mode: 'configured', project, client }} />);
-  await screen.findByRole('heading', { name: 'Calculation preview · Not saved' });
+  await screen.findByRole('heading', { name: 'Calculation preview' });
   fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '42.50' } });
   fireEvent.click(screen.getByRole('radio', { name: 'Restaurant roster' }));
   await loaded(); choose();
@@ -380,8 +381,8 @@ it('preserves the browser-local roster, inputs and storage through explicit sour
   expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
   expect(weightInput()).toHaveValue('100');
   expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
-  expect(read.mock.calls.every(([key]) => key === accountRosterKey(project, userId))).toBe(true);
-  expect(write).not.toHaveBeenCalled();
+  expect(read.mock.calls.every(([key]) => key === accountRosterKey(project, userId) || key.startsWith('tipsplitter:draft:v1:'))).toBe(true);
+  expect(write.mock.calls.every(([key]) => key.startsWith('tipsplitter:draft:v1:'))).toBe(true);
   expect(localStorage.getItem(accountRosterKey(project, userId))).toBe(saved);
   expect(localStorage.getItem('employees')).toBe('legacy untouched');
   fireEvent.click(screen.getByRole('radio', { name: 'Local roster' }));
@@ -1152,7 +1153,7 @@ async function enterManagement() {
   await screen.findByRole('button', { name: 'Add role' });
   expect(screen.getByRole('heading', { name: 'Manage roster' })).toHaveFocus();
   expect(screen.queryByRole('group', { name: 'Calculation source' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('heading', { name: 'Calculation preview · Not saved' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Calculation preview' })).not.toBeInTheDocument();
 }
 function editingVersions() {
   tables.job_roles.forEach(row => row.xmin = '701');
@@ -1367,7 +1368,7 @@ it('retains both inline inputs through a successful pending access check without
 it('distinguishes preview exclusion from temporary removal with visible and accessible action names', async () => {
   render(panel()); await loaded(); choose(); addTemporary();
   expect(screen.getByRole('heading', { name: 'Restaurant roster · Fictional Juniper' })).toBeVisible();
-  expect(screen.getByRole('heading', { name: 'Calculation preview · Not saved' })).toBeVisible();
+  expect(screen.getByRole('heading', { name: 'Calculation preview' })).toBeVisible();
   expect(screen.getByText('Preview amounts are not recorded payments.')).toBeVisible();
   expect(screen.getByText(/Reloading uses the latest defaults, resets temporary weights and clears selections and temporary participants/)).toBeVisible();
   expect(screen.queryByText(/Supabase|DEV|authentication mechanics/i)).not.toBeInTheDocument();
@@ -1380,4 +1381,217 @@ it('distinguishes preview exclusion from temporary removal with visible and acce
   expect(remove).toBeVisible();
   remove.focus(); await userEvent.keyboard(' ');
   expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
+});
+
+const draftScope = accountRosterKey(project, userId);
+const persistedPanel = (overrides = {}) => panel({ draftScope, ...overrides });
+
+it('recovers an autosaved shared preview with exact text, duplicate temporary names/IDs and unfinished form', async () => {
+  const { readDraft, sharedDraftKey } = await import('./calculationDraft');
+  const key = sharedDraftKey(draftScope, org);
+  const first = render(persistedPanel()); await loaded(); choose();
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '0012.34' } });
+  fireEvent.change(screen.getByLabelText('Credit Tips ($)'), { target: { value: '87.66' } });
+  fireEvent.click(screen.getByLabelText('Round down to whole dollar'));
+  editWeight('0');
+  addTemporary('Fictional Guest', '01.50'); addTemporary('Fictional Guest', '25');
+  fireEvent.change(screen.getByLabelText('Temporary participant name'), { target: { value: 'Unfinished fictional name' } });
+  const before = readDraft(key).value!;
+  expect(before.temporary).toHaveLength(2);
+  expect(new Set(before.temporary.map(row => row.id)).size).toBe(2);
+  expect(before.selected).toHaveLength(3);
+  first.unmount(); render(persistedPanel()); await loaded();
+  expect(screen.getByText('Draft restored on this device.')).toBeVisible();
+  expect(weightInput()).toHaveValue('0');
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('0012.34');
+  expect(screen.getByLabelText('Credit Tips ($)')).toHaveValue('87.66');
+  expect(screen.getByLabelText('Round down to whole dollar')).toBeChecked();
+  expect(screen.getByLabelText('Temporary participant name')).toHaveValue('Unfinished fictional name');
+  expect(screen.getAllByRole('group', { name: 'Temporary participant Fictional Guest' })).toHaveLength(2);
+  expect(readDraft(key).value).toEqual(before);
+  const result = screen.getAllByRole('textbox', { name: /^Temporary share weight in results · Fictional Guest/ });
+  expect(result[0]).toHaveValue('01.50');
+  fireEvent.change(result[0], { target: { value: '1..' } });
+  const invalid = readDraft(key).value!;
+  cleanup(); render(persistedPanel()); await loaded();
+  expect(screen.getAllByRole('textbox', { name: /^Temporary share weight in results · Fictional Guest/ })[0]).toHaveValue('1..');
+  expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
+  expect(readDraft(key).value!.temporary.map(row => row.id)).toEqual(invalid.temporary.map(row => row.id));
+});
+
+it.each([false, true])('reconciles identical money and remainder after reload, whole-dollar=%s', async round => {
+  tables.employees.push({ ...employee(), id: id(7), name: 'Fictional Casey', default_weight_override: '50' });
+  const first = render(persistedPanel()); await loaded(); choose(); choose('Fictional Casey');
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100' } });
+  if (round) fireEvent.click(screen.getByLabelText('Round down to whole dollar'));
+  const before = ['Employee Fictional Avery', 'Employee Fictional Casey', 'Allocated Tips', 'Unassigned Remainder'].map(name => screen.getByRole('group', { name }).textContent);
+  first.unmount(); render(persistedPanel()); await loaded();
+  expect(['Employee Fictional Avery', 'Employee Fictional Casey', 'Allocated Tips', 'Unassigned Remainder'].map(name => screen.getByRole('group', { name }).textContent)).toEqual(before);
+});
+
+it.each(['missing', 'inactive', 'role-inactive', 'default', 'role'])('requires review for a recovered %s employee and persists that gate', async kind => {
+  const first = render(persistedPanel()); await loaded(); choose(); editWeight('01.50');
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100' } });
+  first.unmount();
+  if (kind === 'missing') tables.employees = [];
+  if (kind === 'inactive') tables.employees[0].is_active = false;
+  if (kind === 'role-inactive') tables.job_roles[0].is_active = false;
+  if (kind === 'default') tables.job_roles[0].default_weight = '50';
+  if (kind === 'role') { tables.job_roles.push({ ...role(), id: id(8) }); tables.employees[0].default_role_id = id(8); }
+  const second = render(persistedPanel()); await loaded();
+  expect(screen.getByText(/The recovered roster changed. Missing/)).toBeVisible();
+  expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
+  expect(within(participating()).queryAllByRole('checkbox').every(box => !(box as HTMLInputElement).checked)).toBe(true);
+  fireEvent.change(screen.getByLabelText('Credit Tips ($)'), { target: { value: '20' } });
+  second.unmount(); render(persistedPanel()); await loaded();
+  expect(screen.getByText(/The recovered roster changed. Missing/)).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'I reviewed the participants' }));
+  expect(screen.getByRole('group', { name: 'Unassigned Remainder' })).toHaveTextContent('+$120.00');
+});
+
+it('does not overwrite saved drafts during initial/pending verification and ignores a late aborted load', async () => {
+  const { readDraft, sharedDraftKey } = await import('./calculationDraft');
+  const key = sharedDraftKey(draftScope, org);
+  const first = render(persistedPanel()); await loaded(); choose(); editWeight('1..');
+  const before = localStorage.getItem(key);
+  first.unmount();
+  const late = deferred<Response>();
+  intercept = request => request.table === 'employees' ? late.promise : undefined;
+  const second = render(persistedPanel());
+  await waitFor(() => expect(exactReads()).toHaveLength(2));
+  expect(localStorage.getItem(key)).toBe(before);
+  expect(screen.queryByLabelText('Cash Tips ($)')).not.toBeInTheDocument();
+  second.unmount();
+  await act(async () => late.resolve(response([employee()])));
+  expect(localStorage.getItem(key)).toBe(before);
+  intercept = () => undefined;
+  render(persistedPanel()); await loaded();
+  expect(weightInput()).toHaveValue('1..');
+  expect(readDraft(key).value!.selected).toEqual([id(6)]);
+});
+
+it('preserves autosaved text during two routine minute checks and clears storage on revocation', async () => {
+  const { sharedDraftKey } = await import('./calculationDraft');
+  vi.useFakeTimers();
+  render(<SharedRoster draftScope={draftScope} client={client} userId={userId} calculationMode />);
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  choose(); editWeight('01.50'); addTemporary();
+  const key = sharedDraftKey(draftScope, org), saved = localStorage.getItem(key);
+  for (let i = 0; i < 2; i++) {
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(weightInput()).toHaveValue('01.50');
+    expect(localStorage.getItem(key)).toBe(saved);
+    expect(temporaryRow()).toBeVisible();
+  }
+  tables.organization_memberships = [];
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  expect(localStorage.getItem(key)).toBeNull();
+  tables.organization_memberships = [membership()];
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  expandGroups();
+  expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
+  expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
+});
+
+it.each(['reload', 'discard'])('does not resurrect participants after deliberate %s', async action => {
+  const first = render(persistedPanel()); await loaded(); choose(); editWeight('1..'); addTemporary();
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '100' } });
+  if (action === 'reload') { reload(); await loaded(); }
+  else fireEvent.click(screen.getByRole('button', { name: 'Discard draft / Start fresh' }));
+  first.unmount(); render(persistedPanel()); await loaded();
+  expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
+  expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue(action === 'reload' ? '100' : '');
+});
+
+it('restores source/restaurant only after Auth/access verification and clears shared data on source switching', async () => {
+  const { sharedDraftKey } = await import('./calculationDraft');
+  const first = render(<AuthGate runtime={{ mode: 'configured', project, client }} />);
+  fireEvent.click(await screen.findByRole('radio', { name: 'Restaurant roster' }));
+  await loaded(); choose(); editWeight('0'); addTemporary();
+  first.unmount();
+  const second = render(<AuthGate runtime={{ mode: 'configured', project, client }} />);
+  expect(screen.queryByText('Fictional Guest')).not.toBeInTheDocument();
+  await loaded();
+  expect(screen.getByRole('radio', { name: 'Restaurant roster' })).toBeChecked();
+  expect(weightInput()).toHaveValue('0');
+  expect(temporaryRow()).toBeVisible();
+  fireEvent.click(screen.getByRole('radio', { name: 'Local roster' }));
+  expect(localStorage.getItem(sharedDraftKey(draftScope, org))).toBeNull();
+  second.unmount(); render(<AuthGate runtime={{ mode: 'configured', project, client }} />);
+  expect(await screen.findByRole('radio', { name: 'Local roster' })).toBeChecked();
+  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant roster' })); await loaded();
+  expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
+  expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
+});
+
+it('clears persisted shared drafts when the parent fails initial offline access verification', async () => {
+  const { sharedDraftKey } = await import('./calculationDraft');
+  const first = render(persistedPanel()); await loaded(); choose(); addTemporary();
+  first.unmount();
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+  render(<SharedRoster draftScope={draftScope} initialSelection={org} client={client} userId={userId} calculationMode />);
+  await screen.findByRole('alert');
+  expect(localStorage.getItem(sharedDraftKey(draftScope, org))).toBeNull();
+  expect(screen.queryByText('Fictional Guest')).not.toBeInTheDocument();
+});
+
+it('clears restaurant A persistence on switching to B, and never restores it on returning to A', async () => {
+  const { sharedDraftKey } = await import('./calculationDraft');
+  tables.organizations.push({ id: otherOrg, name: 'Fictional Moonbeam' });
+  tables.organization_memberships.push(membership(otherOrg));
+  tables.job_roles.push(role(otherOrg)); tables.employees.push(employee(otherOrg));
+  render(<AuthGate runtime={{ mode: 'configured', project, client }} />);
+  fireEvent.click(await screen.findByRole('radio', { name: 'Restaurant roster' }));
+  fireEvent.change(await screen.findByLabelText('Restaurant'), { target: { value: org } });
+  await loaded(); choose(); addTemporary();
+  expect(localStorage.getItem(sharedDraftKey(draftScope, org))).not.toBeNull();
+  fireEvent.change(screen.getByLabelText('Restaurant'), { target: { value: otherOrg } });
+  await loaded(); choose('Fictional Blair');
+  expect(localStorage.getItem(sharedDraftKey(draftScope, org))).toBeNull();
+  fireEvent.change(screen.getByLabelText('Restaurant'), { target: { value: org } });
+  await loaded();
+  expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
+  expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
+});
+
+it.each(['sign-out', 'account-switch'])('clears shared draft persistence on %s before delayed responses can restore it', async kind => {
+  const { sharedDraftKey } = await import('./calculationDraft');
+  render(<AuthGate runtime={{ mode: 'configured', project, client }} />);
+  fireEvent.click(await screen.findByRole('radio', { name: 'Restaurant roster' }));
+  await loaded(); choose(); addTemporary();
+  const late = deferred<Response>();
+  intercept = request => request.table === 'organization_memberships' ? late.promise : undefined;
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh access / retry' }));
+  if (kind === 'sign-out') fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+  else act(() => emit('SIGNED_IN', { ...session!, user: { ...session!.user, id: otherUser } }));
+  expect(localStorage.getItem(sharedDraftKey(draftScope, org))).toBeNull();
+  await act(async () => late.resolve(response([membership()])));
+  expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
+  expect(localStorage.getItem(sharedDraftKey(draftScope, org))).toBeNull();
+});
+
+it('hydrates a shared draft through StrictMode replay without blank or stale writes', async () => {
+  const { sharedDraftKey } = await import('./calculationDraft');
+  const first = render(persistedPanel()); await loaded(); choose(); editWeight('01.50');
+  const key = sharedDraftKey(draftScope, org), before = localStorage.getItem(key);
+  first.unmount();
+  render(<StrictMode>{persistedPanel()}</StrictMode>); await loaded();
+  expect(weightInput()).toHaveValue('01.50');
+  expect(within(participating()).getByRole('checkbox')).toBeChecked();
+  expect(localStorage.getItem(key)).toBe(before);
+});
+
+it('keeps corrupt shared data untouched until an edit and warns if autosave is denied', async () => {
+  const { sharedDraftKey } = await import('./calculationDraft');
+  const key = sharedDraftKey(draftScope, org);
+  localStorage.setItem(key, '{broken');
+  render(persistedPanel()); await loaded();
+  expect(localStorage.getItem(key)).toBe('{broken');
+  expect(screen.getByText(/Draft could not be read/)).toBeVisible();
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
+  choose(); editWeight('1..');
+  expect(weightInput()).toHaveValue('1..');
+  expect(screen.getByText(/Changes are session-only/)).toBeVisible();
+  expect(localStorage.getItem(key)).toBe('{broken');
 });

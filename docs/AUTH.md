@@ -192,3 +192,14 @@ Codex Cloud, Node 24.19.0 / npm 11.9.0:
   records the owner's report that the DEV login/logout checklist was exercised; its
   individual outcomes and temporary-account cleanup were not independently documented
   there. Hosted refresh/expiry and production acceptance remain unverified.
+
+## Draft lifecycle update (Issue #56)
+
+The earlier Auth milestone's reset-on-reload behavior is superseded by
+[device-local draft recovery](CALCULATION-DRAFTS.md). After verified Auth, the
+same project/account can recover local inputs and the intended shared source/
+restaurant. Shared data requires fresh access/roster verification. Sign-out,
+account switching, known-account verification failure and expiry clear calculation
+drafts while preserving permanent rosters. Project/client changes remount the
+Auth gate before any draft is read; namespaces remain separate. No session token
+or credential is included in calculation draft storage.

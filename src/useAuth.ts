@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session, SupabaseClient, User } from '@supabase/supabase-js';
 
+import { clearAccountDrafts } from './calculationDraft';
+import { accountRosterKey } from './supabase';
+
 type AuthState = { user: User | null; loading: boolean; error: string | null };
 const sessionError = 'Your session could not be verified. Check your connection and sign in again.';
 
@@ -11,21 +14,28 @@ function signInError(error: unknown) {
     : 'Unable to sign in right now. Check your connection and try again.';
 }
 
-export function useAuth(client: SupabaseClient) {
+export function useAuth(client: SupabaseClient, project?: string) {
   const [state, setState] = useState<AuthState>({ user: null, loading: true, error: null });
+  const [draftWarning, setDraftWarning] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [signOutFailed, setSignOutFailed] = useState(false);
   const revision = useRef(0);
   const active = useRef(false);
   const signingOut = useRef(false);
+  const lastDraftUser = useRef<string | undefined>(undefined);
   const verified = useRef<{ token: string; user: User } | null>(null);
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const clearDrafts = useCallback((userId?: string) => {
+    if (project && userId) setDraftWarning(clearAccountDrafts(accountRosterKey(project, userId)) ? undefined : 'Draft could not be cleared from browser storage. Clear site data before leaving this device.');
+  }, [project]);
 
   const receive = useCallback(async (session: Session | null) => {
     const ticket = ++revision.current;
     if (!active.current || signingOut.current) return;
     if (!session) {
       clearTimeout(expiryTimer.current);
+      clearDrafts(verified.current?.user.id);
       verified.current = null;
       setState({ user: null, loading: false, error: null });
       return;
@@ -35,6 +45,7 @@ export function useAuth(client: SupabaseClient) {
     // Repeated SIGNED_IN events (e.g. tab focus) must not reset calculator drafts.
     const previous = verified.current;
     if (!previous || previous.user.id !== session.user.id || !validTime) {
+      clearDrafts(previous?.user.id);
       clearTimeout(expiryTimer.current);
       verified.current = null;
       setState({ user: null, loading: true, error: null });
@@ -50,21 +61,24 @@ export function useAuth(client: SupabaseClient) {
       if (expiresAt * 1000 <= Date.now()) throw new Error('Expired session');
       clearTimeout(expiryTimer.current);
       verified.current = { token: session.access_token, user };
+      lastDraftUser.current = user.id;
       setState({ user, loading: false, error: null });
       // The SDK refreshes automatically. If it cannot refresh, hide the preview at
       // expiry instead of leaving authenticated content mounted indefinitely.
       expiryTimer.current = setTimeout(() => {
         ++revision.current;
+        clearDrafts(user.id);
         verified.current = null;
         setState({ user: null, loading: false, error: 'Your session expired. Sign in again.' });
       }, Math.min(expiresAt * 1000 - Date.now(), 2_147_483_647));
     } catch {
       if (!active.current || ticket !== revision.current || signingOut.current) return;
       clearTimeout(expiryTimer.current);
+      clearDrafts(session.user.id);
       verified.current = null;
       setState({ user: null, loading: false, error: sessionError });
     }
-  }, [client]);
+  }, [client, clearDrafts]);
 
   useEffect(() => {
     active.current = true;
@@ -78,6 +92,7 @@ export function useAuth(client: SupabaseClient) {
       // the synchronous auth callback to avoid re-entering its session lock.
       const eventTicket = ++revision.current;
       if (!session || verified.current?.user.id !== session.user.id) {
+        clearDrafts(verified.current?.user.id);
         verified.current = null;
         setState({ user: null, loading: !!session, error: null });
       }
@@ -105,7 +120,7 @@ export function useAuth(client: SupabaseClient) {
       timers.forEach(clearTimeout);
       clearTimeout(expiryTimer.current);
     };
-  }, [client, receive]);
+  }, [client, receive, clearDrafts]);
 
   const signIn = async (email: string, password: string) => {
     setBusy(true);
@@ -130,6 +145,7 @@ export function useAuth(client: SupabaseClient) {
     signingOut.current = true;
     setSignOutFailed(true);
     ++revision.current;
+    clearDrafts(verified.current?.user.id ?? lastDraftUser.current);
     verified.current = null;
     clearTimeout(expiryTimer.current);
     setBusy(true);
@@ -148,5 +164,5 @@ export function useAuth(client: SupabaseClient) {
     } finally { if (active.current) setBusy(false); }
   };
 
-  return { ...state, busy, signIn, signOut, signOutFailed };
+  return { ...state, draftWarning, busy, signIn, signOut, signOutFailed };
 }
