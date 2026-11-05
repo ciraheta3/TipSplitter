@@ -119,12 +119,12 @@ function RosterRequest({ client, userId, calculationMode, management: manage = f
       </select>
     </div> : state.selected && <p className="font-semibold break-words">Restaurant: {state.organizations.find(org => org.id === state.selected)?.name}</p>}
     {manage && state.organizations.length > 1 && <p>Back to calculator before changing restaurants. Any open draft must be discarded explicitly.</p>}
-    <p role="status" style={{ visibility: loading ? undefined : 'hidden' }} aria-hidden={!loading}>Checking restaurant access and loading shared roster…</p>
+    <p role="status" style={{ visibility: loading ? undefined : 'hidden' }} aria-hidden={!loading}>Checking restaurant access…</p>
     {state.error && <p role="alert">{state.error}{manage && ' Management is unavailable and any unsaved draft was cleared because access could not be verified.'}</p>}
-    {!loading && !state.error && state.organizations.length > 1 && !state.selected && <p>Select a restaurant to view its shared roster.</p>}
+    {!loading && !state.error && state.organizations.length > 1 && !state.selected && <p>Select a restaurant to continue.</p>}
     {!loading && !state.error && !state.organizations.length && <div>
       <h3 className="font-semibold">No restaurant access assigned</h3>
-      <p>Contact the project owner for access. You can continue using the browser-local calculator.</p>
+      <p>Contact the project owner for access. You can continue using the local calculator.</p>
       {manage && <p>Management is unavailable and any unsaved draft was cleared because restaurant access changed.</p>}
     </div>}
     {manage && <h2 ref={viewHeading} tabIndex={-1} className="text-2xl font-bold">Manage roster</h2>}

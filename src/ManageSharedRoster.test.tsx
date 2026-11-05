@@ -94,22 +94,22 @@ function expandEmployeeGroups() {
   }
 }
 async function loaded(expand = true) {
-  await waitFor(() => expect(screen.queryByText('Verifying access and exact shared defaults…')).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByText('Checking roster access…')).not.toBeInTheDocument());
   const add = await screen.findByRole('button', { name: 'Add role' });
   if (expand) expandEmployeeGroups();
   return add;
 }
 async function addRole(name = '  Fictional custom  ', weight = '90071992547409.91') {
   await userEvent.click(await loaded());
-  await userEvent.type(screen.getByLabelText('Shared role name'), name);
+  await userEvent.type(screen.getByLabelText('Role name'), name);
   await userEvent.type(screen.getByLabelText('Default share weight'), weight);
-  await userEvent.click(screen.getByRole('button', { name: 'Save shared roster' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Save roster' }));
 }
 async function submitEmployee(name = 'Fictional delayed employee') {
   await userEvent.click(screen.getByRole('button', { name: 'Add employee' }));
-  fireEvent.change(screen.getByLabelText('Shared employee name'), { target: { value: name } });
-  fireEvent.change(screen.getByLabelText('Default shared job role'), { target: { value: id(4) } });
-  fireEvent.submit(screen.getByRole('form', { name: 'Add shared employee' }));
+  fireEvent.change(screen.getByLabelText('Employee name'), { target: { value: name } });
+  fireEvent.change(screen.getByLabelText('Default job role'), { target: { value: id(4) } });
+  fireEvent.submit(screen.getByRole('form', { name: 'Add employee' }));
   await waitFor(() => expect(mutations()).toHaveLength(1));
 }
 async function inspectAndAcknowledge(expected = 'Fictional delayed employee · Active') {
@@ -141,12 +141,12 @@ it.each(['admin', 'closer'])('allows active %s exact-string inserts, rechecks ac
 it('preserves inactive existing links and changes employee NULL to explicit zero and back with version filters', async () => {
   render(manager()); await loaded();
   expect(screen.getByText('Effective default share weight: 50 · Inherited from role')).toBeVisible();
-  await userEvent.click(screen.getByRole('button', { name: 'Edit shared employee Fictional Avery' }));
-  expect(screen.getByLabelText('Default shared job role')).toHaveValue(id(5));
+  await userEvent.click(screen.getByRole('button', { name: 'Edit employee Fictional Avery' }));
+  expect(screen.getByLabelText('Default job role')).toHaveValue(id(5));
   expect(screen.getByRole('option', { name: /Fictional retired role/ })).toBeEnabled();
   await userEvent.type(screen.getByLabelText('Default share weight override (blank inherits role)'), '0');
-  await userEvent.click(screen.getByLabelText('Active shared employee'));
-  await userEvent.click(screen.getByRole('button', { name: 'Save shared roster' }));
+  await userEvent.click(screen.getByLabelText('Active employee'));
+  await userEvent.click(screen.getByRole('button', { name: 'Save roster' }));
   await screen.findByText('Save confirmed. Shared roster refreshed.');
   expandEmployeeGroups();
   expect(screen.getByText('Effective default share weight: 0.00 · Explicit zero override')).toBeVisible();
@@ -156,10 +156,10 @@ it('preserves inactive existing links and changes employee NULL to explicit zero
   expect(patch.url.searchParams.get('id')).toBe(`eq.${id(6)}`);
   expect(patch.url.searchParams.get('xmin')).toBe('eq.703');
   expect(JSON.parse(String(patch.init.body))).toEqual({ name: 'Fictional Avery', default_role_id: id(5), default_weight_override: '0.00', is_active: false });
-  await userEvent.click(screen.getByRole('button', { name: 'Edit shared employee Fictional Avery' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Edit employee Fictional Avery' }));
   await userEvent.clear(screen.getByLabelText('Default share weight override (blank inherits role)'));
-  await userEvent.click(screen.getByLabelText('Active shared employee'));
-  await userEvent.click(screen.getByRole('button', { name: 'Save shared roster' }));
+  await userEvent.click(screen.getByLabelText('Active employee'));
+  await userEvent.click(screen.getByRole('button', { name: 'Save roster' }));
   await screen.findByText('Save confirmed. Shared roster refreshed.');
   expandEmployeeGroups();
   expect(JSON.parse(String(mutations()[1].init.body)).default_weight_override).toBeNull();
@@ -172,19 +172,19 @@ it('disables new inactive-role assignments, allows duplicate employee names, and
   render(manager()); await loaded();
   await userEvent.click(screen.getByRole('button', { name: 'Add employee' }));
   expect(screen.getByRole('option', { name: /Fictional retired role/ })).toBeDisabled();
-  await userEvent.type(screen.getByLabelText('Shared employee name'), 'Fictional Avery');
-  await userEvent.selectOptions(screen.getByLabelText('Default shared job role'), id(4));
+  await userEvent.type(screen.getByLabelText('Employee name'), 'Fictional Avery');
+  await userEvent.selectOptions(screen.getByLabelText('Default job role'), id(4));
   await userEvent.type(screen.getByLabelText('Default share weight override (blank inherits role)'), '0.01');
-  await userEvent.click(screen.getByRole('button', { name: 'Save shared roster' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Save roster' }));
   await screen.findByText('Save confirmed. Shared roster refreshed.');
   expandEmployeeGroups();
   expect(screen.getAllByText('Fictional Avery · Active')).toHaveLength(2);
   expect(screen.getByText('Effective default share weight: 0.01 · Employee override')).toBeVisible();
-  const form = screen.getByRole('button', { name: new RegExp(`Edit shared employee Fictional Avery.*${tables.employees[1].id}`) });
+  const form = screen.getByRole('button', { name: new RegExp(`Edit employee Fictional Avery.*${tables.employees[1].id}`) });
   await userEvent.click(form);
   expect(screen.getByLabelText('Default share weight override (blank inherits role)')).toHaveValue('0.01');
-  await userEvent.selectOptions(screen.getByLabelText('Default shared job role'), id(7));
-  await userEvent.click(screen.getByRole('button', { name: 'Save shared roster' }));
+  await userEvent.selectOptions(screen.getByLabelText('Default job role'), id(7));
+  await userEvent.click(screen.getByRole('button', { name: 'Save roster' }));
   await screen.findByText('Save confirmed. Shared roster refreshed.');
   expandEmployeeGroups();
   expect(JSON.parse(String(mutations()[1].init.body))).toMatchObject({ default_role_id: id(7), default_weight_override: '0.01' });
@@ -194,9 +194,9 @@ it('requires an active role for new employees and allows role reactivation witho
   tables.job_roles[0].is_active = false;
   render(manager()); await loaded();
   expect(screen.getByRole('button', { name: 'Add employee' })).toBeDisabled();
-  await userEvent.click(screen.getByRole('button', { name: 'Edit shared role Fictional server' }));
-  await userEvent.click(screen.getByLabelText('Active shared role'));
-  await userEvent.click(screen.getByRole('button', { name: 'Save shared roster' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Edit role Fictional server' }));
+  await userEvent.click(screen.getByLabelText('Active role'));
+  await userEvent.click(screen.getByRole('button', { name: 'Save roster' }));
   await screen.findByText('Save confirmed. Shared roster refreshed.');
   expandEmployeeGroups();
   expect(screen.getByRole('button', { name: 'Add employee' })).toBeEnabled();
@@ -206,10 +206,10 @@ it('requires an active role for new employees and allows role reactivation witho
 it('rechecks a new default role and blocks it if it became inactive', async () => {
   render(manager()); await loaded();
   await userEvent.click(screen.getByRole('button', { name: 'Add employee' }));
-  await userEvent.type(screen.getByLabelText('Shared employee name'), 'Fictional new employee');
-  await userEvent.selectOptions(screen.getByLabelText('Default shared job role'), id(4));
+  await userEvent.type(screen.getByLabelText('Employee name'), 'Fictional new employee');
+  await userEvent.selectOptions(screen.getByLabelText('Default job role'), id(4));
   tables.job_roles[0].is_active = false;
-  await userEvent.click(screen.getByRole('button', { name: 'Save shared roster' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Save roster' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('selected role changed');
   expect(mutations()).toHaveLength(0);
 });
@@ -236,10 +236,10 @@ it.each(['1e2', '1.001', '1.000', '90071992547409.92'])('rejects invalid share i
 it.each([['role', 101], ['employee', 161]] as const)('enforces the %s name limit after trimming', async (kind, length) => {
   render(manager()); await loaded();
   await userEvent.click(screen.getByRole('button', { name: kind === 'role' ? 'Add role' : 'Add employee' }));
-  fireEvent.change(screen.getByLabelText(`Shared ${kind} name`), { target: { value: 'x'.repeat(length) } });
+  fireEvent.change(screen.getByLabelText(`${kind === 'role' ? 'Role' : 'Employee'} name`), { target: { value: 'x'.repeat(length) } });
   if (kind === 'role') fireEvent.change(screen.getByLabelText('Default share weight'), { target: { value: '1' } });
-  else await userEvent.selectOptions(screen.getByLabelText('Default shared job role'), id(4));
-  await userEvent.click(screen.getByRole('button', { name: 'Save shared roster' }));
+  else await userEvent.selectOptions(screen.getByLabelText('Default job role'), id(4));
+  await userEvent.click(screen.getByRole('button', { name: 'Save roster' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Name is required');
   expect(mutations()).toHaveLength(0);
 });
@@ -257,11 +257,11 @@ it.each([
 
 it('blocks stale edits on a zero-row compare and requires a fresh reload', async () => {
   render(manager()); await loaded();
-  await userEvent.click(screen.getByRole('button', { name: 'Edit shared role Fictional server' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Edit role Fictional server' }));
   tables.job_roles[0].xmin = '900'; tables.job_roles[0].name = 'Fictional other operator';
-  await userEvent.click(screen.getByRole('button', { name: 'Save shared roster' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Save roster' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('row changed or access was revoked');
-  expect(screen.queryByRole('button', { name: 'Save shared roster' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Save roster' })).not.toBeInTheDocument();
   expect(tables.job_roles[0].name).toBe('Fictional other operator');
   await userEvent.click(screen.getByRole('button', { name: 'Reload management / discard draft' }));
   expect(await screen.findByText('Fictional other operator · Active')).toBeVisible();
@@ -301,10 +301,10 @@ it.each(['no-session', 'wrong-user', 'unverified', 'nonmember', 'revoked', 'fore
 it('rechecks revoked membership immediately before saving', async () => {
   render(manager()); await loaded();
   await userEvent.click(screen.getByRole('button', { name: 'Add role' }));
-  await userEvent.type(screen.getByLabelText('Shared role name'), 'Fictional revoked');
+  await userEvent.type(screen.getByLabelText('Role name'), 'Fictional revoked');
   await userEvent.type(screen.getByLabelText('Default share weight'), '1');
   tables.organization_memberships = [];
-  await userEvent.click(screen.getByRole('button', { name: 'Save shared roster' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Save roster' }));
   await screen.findByRole('alert');
   expect(mutations()).toHaveLength(0);
 });
@@ -381,14 +381,14 @@ it('expires the write snapshot without losing input through several minutes of a
   render(manager());
   await act(async () => { await vi.advanceTimersByTimeAsync(1); });
   fireEvent.click(screen.getByRole('button', { name: 'Add role' }));
-  fireEvent.change(screen.getByLabelText('Shared role name'), { target: { value: 'Fictional unsent' } });
+  fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Fictional unsent' } });
   await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
-  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional unsent');
+  expect(screen.getByLabelText('Role name')).toHaveValue('Fictional unsent');
   expect(screen.getByRole('alert')).toHaveTextContent('snapshot expired');
-  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Save roster' })).toBeDisabled();
   const checked = auth.getUser.mock.calls.length;
   await act(async () => { await vi.advanceTimersByTimeAsync(180_000); });
-  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional unsent');
+  expect(screen.getByLabelText('Role name')).toHaveValue('Fictional unsent');
   expect(auth.getUser.mock.calls.length).toBeGreaterThan(checked);
   fireEvent.submit(screen.getByRole('form'));
   expect(mutations()).toHaveLength(0);
@@ -397,11 +397,11 @@ it('expires the write snapshot without losing input through several minutes of a
 it('rejects an expired snapshot after OS sleep even before a browser timer fires', async () => {
   render(manager()); await loaded();
   await userEvent.click(screen.getByRole('button', { name: 'Add role' }));
-  await userEvent.type(screen.getByLabelText('Shared role name'), 'Fictional sleeping draft');
+  await userEvent.type(screen.getByLabelText('Role name'), 'Fictional sleeping draft');
   await userEvent.type(screen.getByLabelText('Default share weight'), '1');
   const resumedAt = Date.now() + 60_001;
   vi.spyOn(Date, 'now').mockReturnValue(resumedAt);
-  fireEvent.click(screen.getByRole('button', { name: 'Save shared roster' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save roster' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('editing snapshot expired');
   expect(mutations()).toHaveLength(0);
 });
@@ -431,7 +431,7 @@ it.each(['reload', 'auth-refresh', 'unmount', 'parent-focus'])('retains uncertai
   if (kind === 'unmount') { view.unmount(); render(manager()); }
   if (kind === 'parent-focus') {
     fireEvent(window, new Event('focus'));
-    expect(screen.getByRole('region', { name: 'Manage shared roster · DEV' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Restaurant roster management' })).toBeVisible();
   }
   await loaded();
   expect(request.init.signal?.aborted).toBe(true);
@@ -460,9 +460,9 @@ it('keeps additions blocked when one-minute expiry interrupts an insert', async 
   render(manager());
   await act(async () => { await vi.advanceTimersByTimeAsync(1); });
   fireEvent.click(screen.getByRole('button', { name: 'Add employee' }));
-  fireEvent.change(screen.getByLabelText('Shared employee name'), { target: { value: 'Fictional expiring insert' } });
-  fireEvent.change(screen.getByLabelText('Default shared job role'), { target: { value: id(4) } });
-  fireEvent.submit(screen.getByRole('form', { name: 'Add shared employee' }));
+  fireEvent.change(screen.getByLabelText('Employee name'), { target: { value: 'Fictional expiring insert' } });
+  fireEvent.change(screen.getByLabelText('Default job role'), { target: { value: id(4) } });
+  fireEvent.submit(screen.getByRole('form', { name: 'Add employee' }));
   await act(async () => {});
   expect(mutations()).toHaveLength(1);
   const request = mutations()[0];
@@ -529,10 +529,10 @@ it.each(['insert', 'patch'])('blocks repeated Save submissions for an in-flight 
   render(manager()); await loaded();
   if (kind === 'insert') {
     fireEvent.click(screen.getByRole('button', { name: 'Add employee' }));
-    fireEvent.change(screen.getByLabelText('Shared employee name'), { target: { value: 'Fictional single insert' } });
-    fireEvent.change(screen.getByLabelText('Default shared job role'), { target: { value: id(4) } });
-  } else { expandEmployeeGroups(); fireEvent.click(screen.getByRole('button', { name: 'Edit shared employee Fictional Avery' })); }
-  const form = screen.getByRole('form', { name: kind === 'insert' ? 'Add shared employee' : 'Edit shared employee' });
+    fireEvent.change(screen.getByLabelText('Employee name'), { target: { value: 'Fictional single insert' } });
+    fireEvent.change(screen.getByLabelText('Default job role'), { target: { value: id(4) } });
+  } else { expandEmployeeGroups(); fireEvent.click(screen.getByRole('button', { name: 'Edit employee Fictional Avery' })); }
+  const form = screen.getByRole('form', { name: kind === 'insert' ? 'Add employee' : 'Edit employee' });
   act(() => { fireEvent.submit(form); fireEvent.submit(form); });
   await waitFor(() => expect(mutations()).toHaveLength(1));
   fireEvent.submit(form);
@@ -612,9 +612,9 @@ async function openDraft(kind: 'role' | 'employee', parent = false) {
     await act(async () => {});
   }
   fireEvent.click(screen.getByRole('button', { name: kind === 'role' ? 'Add role' : 'Add employee' }));
-  fireEvent.change(screen.getByLabelText(`Shared ${kind} name`), { target: { value: 'Fictional retained input' } });
+  fireEvent.change(screen.getByLabelText(`${kind === 'role' ? 'Role' : 'Employee'} name`), { target: { value: 'Fictional retained input' } });
   fireEvent.change(screen.getByLabelText(kind === 'role' ? 'Default share weight' : 'Default share weight override (blank inherits role)'), { target: { value: '0.01' } });
-  if (kind === 'employee') fireEvent.change(screen.getByLabelText('Default shared job role'), { target: { value: id(4) } });
+  if (kind === 'employee') fireEvent.change(screen.getByLabelText('Default job role'), { target: { value: id(4) } });
 }
 
 it.each(['role', 'employee'] as const)('keeps the parent %s editor open through four minutes, requiring explicit revalidation before a single save', async kind => {
@@ -623,17 +623,17 @@ it.each(['role', 'employee'] as const)('keeps the parent %s editor open through 
   const verified = auth.getUser.mock.calls.length;
   const storage = vi.spyOn(Storage.prototype, 'setItem');
   await act(async () => { await vi.advanceTimersByTimeAsync(240_000); });
-  expect(screen.getByRole('region', { name: 'Manage shared roster · DEV' })).toBeVisible();
-  expect(screen.getByLabelText(`Shared ${kind} name`)).toHaveValue('Fictional retained input');
+  expect(screen.getByRole('region', { name: 'Restaurant roster management' })).toBeVisible();
+  expect(screen.getByLabelText(`${kind === 'role' ? 'Role' : 'Employee'} name`)).toHaveValue('Fictional retained input');
   expect(screen.getByRole('alert')).toHaveTextContent('snapshot expired');
   expect(auth.getUser.mock.calls.length).toBeGreaterThan(verified);
-  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Save roster' })).toBeDisabled();
   fireEvent.submit(screen.getByRole('form'));
   expect(mutations()).toHaveLength(0);
   fireEvent.click(screen.getByRole('button', { name: 'Revalidate draft' }));
   await act(async () => {});
-  expect(screen.getByLabelText(`Shared ${kind} name`)).toHaveValue('Fictional retained input');
-  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeEnabled();
+  expect(screen.getByLabelText(`${kind === 'role' ? 'Role' : 'Employee'} name`)).toHaveValue('Fictional retained input');
+  expect(screen.getByRole('button', { name: 'Save roster' })).toBeEnabled();
   const form = screen.getByRole('form');
   act(() => { fireEvent.submit(form); fireEvent.submit(form); });
   await act(async () => {});
@@ -651,38 +651,38 @@ it.each(['focus', 'visibility', 'manual-access-refresh'] as const)('preserves in
   if (event === 'focus') fireEvent(window, new Event('focus'));
   if (event === 'visibility') fireEvent(document, new Event('visibilitychange'));
   if (event === 'manual-access-refresh') fireEvent.click(screen.getByRole('button', { name: 'Refresh access / retry' }));
-  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional retained input');
-  expect(screen.getByLabelText('Shared role name')).toBeEnabled();
-  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeDisabled();
-  fireEvent.change(screen.getByLabelText('Shared role name'), { target: { value: 'Fictional still typing' } });
+  expect(screen.getByLabelText('Role name')).toHaveValue('Fictional retained input');
+  expect(screen.getByLabelText('Role name')).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Save roster' })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Fictional still typing' } });
   fireEvent.submit(screen.getByRole('form'));
   expect(mutations()).toHaveLength(0);
   intercept = () => undefined;
   await act(async () => pending.resolve(captured));
   await loaded();
-  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional still typing');
-  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeEnabled();
+  expect(screen.getByLabelText('Role name')).toHaveValue('Fictional still typing');
+  expect(screen.getByRole('button', { name: 'Save roster' })).toBeEnabled();
 });
 
 it.each(['role', 'employee'] as const)('detects a changed %s on expired-draft revalidation and requires cancellation before using the current row', async kind => {
   vi.useFakeTimers();
   render(manager()); await act(async () => {});
   expandEmployeeGroups();
-  fireEvent.click(screen.getByRole('button', { name: kind === 'role' ? 'Edit shared role Fictional server' : 'Edit shared employee Fictional Avery' }));
-  fireEvent.change(screen.getByLabelText(`Shared ${kind} name`), { target: { value: 'Fictional my unsaved edit' } });
+  fireEvent.click(screen.getByRole('button', { name: kind === 'role' ? 'Edit role Fictional server' : 'Edit employee Fictional Avery' }));
+  fireEvent.change(screen.getByLabelText(`${kind === 'role' ? 'Role' : 'Employee'} name`), { target: { value: 'Fictional my unsaved edit' } });
   await act(async () => { await vi.advanceTimersByTimeAsync(60_001); });
   const row = kind === 'role' ? tables.job_roles[0] : tables.employees[0];
   row.xmin = '1200'; row.name = 'Fictional other operator';
   fireEvent.click(screen.getByRole('button', { name: 'Revalidate draft' }));
   await act(async () => {});
   expect(screen.getByRole('alert')).toHaveTextContent('record changed');
-  expect(screen.getByLabelText(`Shared ${kind} name`)).toHaveValue('Fictional my unsaved edit');
-  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeDisabled();
+  expect(screen.getByLabelText(`${kind === 'role' ? 'Role' : 'Employee'} name`)).toHaveValue('Fictional my unsaved edit');
+  expect(screen.getByRole('button', { name: 'Save roster' })).toBeDisabled();
   fireEvent.submit(screen.getByRole('form'));
   expect(mutations()).toHaveLength(0);
   fireEvent.click(screen.getByRole('button', { name: 'Cancel draft' }));
-  fireEvent.click(screen.getByRole('button', { name: `Edit shared ${kind === 'role' ? 'role' : 'employee'} Fictional other operator` }));
-  expect(screen.getByLabelText(`Shared ${kind} name`)).toHaveValue('Fictional other operator');
+  fireEvent.click(screen.getByRole('button', { name: `Edit ${kind === 'role' ? 'role' : 'employee'} Fictional other operator` }));
+  expect(screen.getByLabelText(`${kind === 'role' ? 'Role' : 'Employee'} name`)).toHaveValue('Fictional other operator');
   fireEvent.submit(screen.getByRole('form'));
   await act(async () => {});
   expect(mutations()).toHaveLength(1);
@@ -692,16 +692,16 @@ it.each(['role', 'employee'] as const)('detects a changed %s on expired-draft re
 
 it.each(['changed-token', 'changed-value', 'removed-row'] as const)('background refresh detects %s without rebasing or losing the draft', async change => {
   render(manager()); await loaded();
-  fireEvent.click(screen.getByRole('button', { name: 'Edit shared employee Fictional Avery' }));
-  fireEvent.change(screen.getByLabelText('Shared employee name'), { target: { value: 'Fictional local draft' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit employee Fictional Avery' }));
+  fireEvent.change(screen.getByLabelText('Employee name'), { target: { value: 'Fictional local draft' } });
   if (change === 'changed-token') tables.employees[0].xmin = '999';
   if (change === 'changed-value') tables.employees[0].name = 'Fictional changed value';
   if (change === 'removed-row') tables.employees = [];
   fireEvent(window, new Event('focus'));
   await loaded();
   expect(screen.getByRole('alert')).toHaveTextContent('record changed');
-  expect(screen.getByLabelText('Shared employee name')).toHaveValue('Fictional local draft');
-  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeDisabled();
+  expect(screen.getByLabelText('Employee name')).toHaveValue('Fictional local draft');
+  expect(screen.getByRole('button', { name: 'Save roster' })).toBeDisabled();
   fireEvent.submit(screen.getByRole('form'));
   expect(mutations()).toHaveLength(0);
 });
@@ -710,8 +710,8 @@ it('revalidates an unchanged update draft with fresh time bounds and retains xmi
   vi.useFakeTimers();
   render(manager()); await act(async () => {});
   expandEmployeeGroups();
-  fireEvent.click(screen.getByRole('button', { name: 'Edit shared employee Fictional Avery' }));
-  fireEvent.change(screen.getByLabelText('Shared employee name'), { target: { value: 'Fictional revalidated update' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit employee Fictional Avery' }));
+  fireEvent.change(screen.getByLabelText('Employee name'), { target: { value: 'Fictional revalidated update' } });
   await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
   fireEvent.click(screen.getByRole('button', { name: 'Revalidate draft' }));
   await act(async () => {});
@@ -733,12 +733,12 @@ it('preserves input if the snapshot expires during preflight verification before
   vi.spyOn(Date, 'now').mockReturnValue(resumedAt);
   await act(async () => identity.resolve({ data: { user: session.user }, error: null }));
   expect(screen.getByRole('alert')).toHaveTextContent('snapshot expired');
-  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional retained input');
-  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeDisabled();
+  expect(screen.getByLabelText('Role name')).toHaveValue('Fictional retained input');
+  expect(screen.getByRole('button', { name: 'Save roster' })).toBeDisabled();
   expect(mutations()).toHaveLength(0);
   fireEvent.click(screen.getByRole('button', { name: 'Revalidate draft' }));
   await loaded();
-  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Save roster' })).toBeEnabled();
 });
 
 it.each(['periodic', 'focus', 'revalidate'] as const)('clears protected input after %s detects revoked access', async event => {
@@ -761,14 +761,14 @@ it.each(['SIGNED_IN', 'TOKEN_REFRESHED'] as const)('keeps editor and calculator 
   fireEvent.click(await screen.findByRole('button', { name: 'Manage roster' }));
   await loaded();
   fireEvent.click(screen.getByRole('button', { name: 'Add role' }));
-  fireEvent.change(screen.getByLabelText('Shared role name'), { target: { value: 'Fictional Auth draft' } });
+  fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Fictional Auth draft' } });
   fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '50' } });
   const verified = auth.getUser.mock.calls.length;
   const refreshed = { ...session, access_token: 'fictional-refreshed' };
   auth.getSession.mockResolvedValue({ data: { session: refreshed }, error: null });
   act(() => emit(event, refreshed));
   await loaded();
-  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional Auth draft');
+  expect(screen.getByLabelText('Role name')).toHaveValue('Fictional Auth draft');
   expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('50');
   expect(localStorage.getItem(storageKey)).toContain('Fictional calculator');
   expect(auth.getUser.mock.calls.length).toBeGreaterThan(verified);
@@ -822,7 +822,7 @@ it('does not carry input to another restaurant and keeps the automatically selec
   tables.organization_memberships.push({ organization_id: foreign, user_id: userId, role: 'closer', is_active: true });
   fireEvent(window, new Event('focus'));
   await loaded();
-  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional retained input');
+  expect(screen.getByLabelText('Role name')).toHaveValue('Fictional retained input');
   expect(screen.getByLabelText('Restaurant')).toHaveValue(org);
   expect(screen.getByLabelText('Restaurant')).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
@@ -840,7 +840,7 @@ it.each(['cancel', 'close', 'discard-reload'] as const)('discards input only whe
   await openDraft('role', true);
   fireEvent.click(screen.getByRole('button', { name: action === 'cancel' ? 'Cancel draft' : action === 'close' ? 'Back to calculator' : 'Reload management / discard draft' }));
   if (action === 'close') {
-    expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional retained input');
+    expect(screen.getByLabelText('Role name')).toHaveValue('Fictional retained input');
     fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
     fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
     fireEvent.click(screen.getByRole('button', { name: 'Discard draft and return' }));
@@ -849,7 +849,7 @@ it.each(['cancel', 'close', 'discard-reload'] as const)('discards input only whe
   await loaded();
   expect(screen.queryByRole('form')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Add role' }));
-  expect(screen.getByLabelText('Shared role name')).toHaveValue('');
+  expect(screen.getByLabelText('Role name')).toHaveValue('');
   expect(mutations()).toHaveLength(0);
 });
 
@@ -862,8 +862,8 @@ it('preserves recovery when a parent periodic check interrupts a save, without d
   const pending = deferred<Response>();
   intercept = (_table, _url, init) => init.method === 'POST' ? pending.promise : undefined;
   fireEvent.click(screen.getByRole('button', { name: 'Add employee' }));
-  fireEvent.change(screen.getByLabelText('Shared employee name'), { target: { value: 'Fictional periodic save' } });
-  fireEvent.change(screen.getByLabelText('Default shared job role'), { target: { value: id(4) } });
+  fireEvent.change(screen.getByLabelText('Employee name'), { target: { value: 'Fictional periodic save' } });
+  fireEvent.change(screen.getByLabelText('Default job role'), { target: { value: id(4) } });
   const form = screen.getByRole('form');
   act(() => { fireEvent.submit(form); fireEvent.submit(form); });
   await act(async () => {});
@@ -871,7 +871,7 @@ it('preserves recovery when a parent periodic check interrupts a save, without d
   const request = mutations()[0];
   await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
   expect(request.init.signal?.aborted).toBe(true);
-  expect(screen.getByRole('region', { name: 'Manage shared roster · DEV' })).toBeVisible();
+  expect(screen.getByRole('region', { name: 'Restaurant roster management' })).toBeVisible();
   expect(screen.getByRole('alert')).toHaveTextContent('may have committed');
   expect(screen.getByRole('button', { name: 'Add employee' })).toBeDisabled();
   await act(async () => pending.resolve(query(request.table, request.url, request.init)));
@@ -897,7 +897,7 @@ it.each(['role', 'employee'] as const)('clears the %s draft on a roster-only fai
   expect(await screen.findByRole('alert')).toHaveTextContent('Management is unavailable and any unsaved draft was cleared');
   expect(screen.getByLabelText('Restaurant')).toHaveValue(org);
   expect(screen.getByRole('option', { name: 'Fictional freshly verified B' })).toBeVisible();
-  expect(screen.queryByRole('region', { name: 'Manage shared roster · DEV' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Restaurant roster management' })).not.toBeInTheDocument();
   expect(screen.queryByRole('form')).not.toBeInTheDocument();
   expect(screen.queryByText('Fictional Avery · Active')).not.toBeInTheDocument();
   intercept = () => undefined;
@@ -905,7 +905,7 @@ it.each(['role', 'employee'] as const)('clears the %s draft on a roster-only fai
   await loaded();
   expect(screen.queryByRole('form')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: kind === 'role' ? 'Add role' : 'Add employee' }));
-  expect(screen.getByLabelText(`Shared ${kind} name`)).toHaveValue('');
+  expect(screen.getByLabelText(`${kind === 'role' ? 'Role' : 'Employee'} name`)).toHaveValue('');
   expect(mutations()).toHaveLength(0);
 });
 
@@ -924,7 +924,7 @@ it('ignores a delayed failed roster request after switching restaurants without 
   fireEvent(window, new Event('focus'));
   await screen.findByLabelText('Restaurant');
   await waitFor(() => expect(oldSignal).toBeDefined());
-  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional retained input');
+  expect(screen.getByLabelText('Role name')).toHaveValue('Fictional retained input');
   expect(screen.getByLabelText('Restaurant')).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
   fireEvent.click(screen.getByRole('button', { name: 'Discard draft and return' }));
@@ -942,7 +942,7 @@ it('ignores a delayed failed roster request after switching restaurants without 
   await userEvent.selectOptions(screen.getByLabelText('Restaurant'), org);
   fireEvent.click(await screen.findByRole('button', { name: 'Manage roster' }));
   fireEvent.click(await loaded());
-  expect(screen.getByLabelText('Shared role name')).toHaveValue('');
+  expect(screen.getByLabelText('Role name')).toHaveValue('');
   expect(mutations()).toHaveLength(0);
 });
 
@@ -988,7 +988,7 @@ it('retains the interrupted-save lock after a roster-only failure and tenant swi
 it('editing permanent defaults in management does not reload the frozen calculation; explicit reload still clears temporary changes', async () => {
   tables.employees[0].default_role_id = id(4);
   render(<AuthGate runtime={{ mode: 'configured', project: 'https://fictional.example.test', client }} />);
-  fireEvent.click(await screen.findByRole('radio', { name: 'Restaurant shared roster' }));
+  fireEvent.click(await screen.findByRole('radio', { name: 'Restaurant roster' }));
   const list = await screen.findByRole('group', { name: 'Participating employees' });
   fireEvent.click(within(list).getByRole('button', { name: /Fictional server/ }));
   fireEvent.click(within(list).getByRole('checkbox', { name: /Fictional Avery/ }));
@@ -996,9 +996,9 @@ it('editing permanent defaults in management does not reload the frozen calculat
   fireEvent.change(weight, { target: { value: '13.25' } });
   fireEvent.change(screen.getByRole('textbox', { name: 'Cash Tips ($)' }), { target: { value: '100' } });
   fireEvent.click(screen.getByRole('button', { name: 'Manage roster' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Edit shared role Fictional server' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit role Fictional server' }));
   fireEvent.change(screen.getByLabelText('Default share weight'), { target: { value: '200' } });
-  fireEvent.submit(screen.getByRole('form', { name: 'Edit shared job role' }));
+  fireEvent.submit(screen.getByRole('form', { name: 'Edit job role' }));
   await screen.findByText('Save confirmed. Shared roster refreshed.');
   expandEmployeeGroups();
   fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
@@ -1007,8 +1007,8 @@ it('editing permanent defaults in management does not reload the frozen calculat
   expect(screen.getByText('Permanent default share weight: 100.50')).toBeVisible();
   expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$100.00');
   expect(mutations()).toHaveLength(1);
-  fireEvent.click(screen.getByRole('button', { name: 'Reload shared roster / clear selection' }));
-  await waitFor(() => expect(screen.getByText('Verifying shared calculation access and loading exact defaults…')).not.toBeVisible());
+  fireEvent.click(screen.getByRole('button', { name: 'Reload roster / clear selection' }));
+  await waitFor(() => expect(screen.getByText('Checking calculation access…')).not.toBeVisible());
   fireEvent.click(screen.getByRole('button', { name: /Fictional server.*selected/ }));
   expect(screen.getByText('Permanent default share weight: 200.00')).toBeVisible();
   expect(screen.getByLabelText('Temporary share weight · Fictional Avery')).toHaveValue('200.00');
@@ -1018,22 +1018,22 @@ it('editing permanent defaults in management does not reload the frozen calculat
 it.each(['local', 'shared'])('guards a %s management draft on Back and browser unload without saving', async source => {
   render(<AuthGate runtime={{ mode: 'configured', project: 'https://fictional.example.test', client }} />);
   await screen.findByRole('button', { name: 'Manage roster' });
-  if (source === 'shared') fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+  if (source === 'shared') fireEvent.click(screen.getByRole('radio', { name: 'Restaurant roster' }));
   fireEvent.click(screen.getByRole('button', { name: 'Manage roster' }));
   fireEvent.click(await loaded());
-  fireEvent.change(screen.getByLabelText('Shared role name'), { target: { value: 'Fictional retained' } });
+  fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Fictional retained' } });
   const unload = new Event('beforeunload', { cancelable: true });
   window.dispatchEvent(unload);
   expect(unload.defaultPrevented).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
   expect(screen.getByRole('alert')).toHaveTextContent('Discard the unsaved management draft');
   fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
-  expect(screen.getByLabelText('Shared role name')).toHaveValue('Fictional retained');
+  expect(screen.getByLabelText('Role name')).toHaveValue('Fictional retained');
   fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
   fireEvent.click(screen.getByRole('button', { name: 'Discard draft and return' }));
   fireEvent.click(screen.getByRole('button', { name: 'Manage roster' }));
   fireEvent.click(await loaded());
-  expect(screen.getByLabelText('Shared role name')).toHaveValue('');
+  expect(screen.getByLabelText('Role name')).toHaveValue('');
   expect(mutations()).toHaveLength(0);
 });
 
@@ -1041,7 +1041,7 @@ it('allows return after an uncertain save settles and retains the recovery lock 
   await openDraft('role', true);
   const pending = deferred<Response>();
   intercept = (_table, _url, init) => init.method === 'POST' ? pending.promise : undefined;
-  fireEvent.submit(screen.getByRole('form', { name: 'Add shared job role' }));
+  fireEvent.submit(screen.getByRole('form', { name: 'Add job role' }));
   await waitFor(() => expect(mutations()).toHaveLength(1));
   expect(screen.getByRole('button', { name: 'Back to calculator' })).toBeDisabled();
   await act(async () => pending.reject(new TypeError('fictional network failure')));
@@ -1067,7 +1067,7 @@ const employeeSection = () => screen.getByRole('region', { name: 'Employees' });
 const roleSection = () => screen.getByRole('region', { name: 'Job roles' });
 const employeeGroup = (roleName: string) => within(employeeSection()).getByRole('region', { name: `Employees in ${roleName}` });
 const groupToggle = (roleName: string) => within(employeeGroup(roleName)).getByRole('button', { name: new RegExp(`^${roleName}`) });
-const employeeEdit = (row: Row) => within(employeeSection()).getByRole('button', { name: new RegExp(`^Edit shared employee ${row.name}.*${row.id}`) });
+const employeeEdit = (row: Row) => within(employeeSection()).getByRole('button', { name: new RegExp(`^Edit employee ${row.name}.*${row.id}`) });
 
 it('organizes 49 employees into initially collapsed alphabetic role groups with counts, stable duplicate IDs and visible inactive statuses', async () => {
   largeManagementRoster();
@@ -1082,13 +1082,13 @@ it('organizes 49 employees into initially collapsed alphabetic role groups with 
   expect(within(roleSection()).getAllByRole('listitem').map(row => row.querySelector('p')!.textContent)).toEqual(roles.map(row => `${row.name} · ${row.is_active ? 'Active' : 'Inactive'}`));
   for (const role of roles) {
     expect(within(roleSection()).getByText(`Default share weight: ${role.default_weight}`)).toBeVisible();
-    expect(within(roleSection()).getByRole('button', { name: `Edit shared role ${role.name}` })).toBeEnabled();
+    expect(within(roleSection()).getByRole('button', { name: `Edit role ${role.name}` })).toBeEnabled();
   }
   const toggles = within(employeeSection()).getAllByRole('button', { expanded: false });
   expect(toggles).toHaveLength(5);
   expect(toggles.map(toggle => toggle.textContent)).toEqual(roles.map(role => `▸${role.name}${role.is_active ? '' : ' · Inactive role'}${tables.employees.filter(row => row.default_role_id === role.id).length} employees`));
   expect(within(employeeSection()).queryByRole('listitem')).not.toBeInTheDocument();
-  expect(within(employeeSection()).queryByRole('button', { name: /Edit shared employee/ })).not.toBeInTheDocument();
+  expect(within(employeeSection()).queryByRole('button', { name: /Edit employee/ })).not.toBeInTheDocument();
   fireEvent.click(groupToggle('Bar'));
   expect(groupToggle('Bar')).toHaveAttribute('aria-expanded', 'true');
   expect(groupToggle('Zulu service')).toHaveAttribute('aria-expanded', 'false');
@@ -1113,16 +1113,16 @@ it.each(['role', 'employee'] as const)('places the add %s form immediately benea
   largeManagementRoster(); render(manager()); await loaded(false);
   const add = screen.getByRole('button', { name: kind === 'role' ? 'Add role' : 'Add employee' });
   add.focus(); await userEvent.keyboard('{Enter}');
-  const form = screen.getByRole('form', { name: kind === 'role' ? 'Add shared job role' : 'Add shared employee' });
+  const form = screen.getByRole('form', { name: kind === 'role' ? 'Add job role' : 'Add employee' });
   expect(add.nextElementSibling).toContainElement(form);
-  expect(screen.getByLabelText(`Shared ${kind} name`)).toHaveFocus();
-  fireEvent.change(screen.getByLabelText(`Shared ${kind} name`), { target: { value: 'Fictional protected inline draft' } });
+  expect(screen.getByLabelText(`${kind === 'role' ? 'Role' : 'Employee'} name`)).toHaveFocus();
+  fireEvent.change(screen.getByLabelText(`${kind === 'role' ? 'Role' : 'Employee'} name`), { target: { value: 'Fictional protected inline draft' } });
   const otherAdd = screen.getByRole('button', { name: kind === 'role' ? 'Add employee' : 'Add role' });
   expect(otherAdd).toBeDisabled(); fireEvent.click(otherAdd);
   expandEmployeeGroups();
   expect(screen.getAllByRole('form')).toHaveLength(1);
-  expect(screen.getByLabelText(`Shared ${kind} name`)).toHaveValue('Fictional protected inline draft');
-  expect(screen.getAllByRole('button', { name: /^Edit shared/ }).every(button => (button as HTMLButtonElement).disabled)).toBe(true);
+  expect(screen.getByLabelText(`${kind === 'role' ? 'Role' : 'Employee'} name`)).toHaveValue('Fictional protected inline draft');
+  expect(screen.getAllByRole('button', { name: /^Edit (role|employee) / }).every(button => (button as HTMLButtonElement).disabled)).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Cancel draft' }));
   expect(screen.queryByRole('form')).not.toBeInTheDocument();
   expect(otherAdd).toBeEnabled();
@@ -1131,17 +1131,17 @@ it.each(['role', 'employee'] as const)('places the add %s form immediately benea
 
 it('places a role edit under its own row, retains the same form during checks, and resorts a confirmed rename', async () => {
   largeManagementRoster(); render(manager()); await loaded(false);
-  const edit = screen.getByRole('button', { name: 'Edit shared role Zulu service' });
+  const edit = screen.getByRole('button', { name: 'Edit role Zulu service' });
   const row = edit.closest('li')!;
   fireEvent.click(edit);
-  const form = screen.getByRole('form', { name: 'Edit shared job role' });
+  const form = screen.getByRole('form', { name: 'Edit job role' });
   expect(row).toContainElement(form);
   expect(edit.parentElement!.nextElementSibling).toContainElement(form);
-  const input = screen.getByLabelText('Shared role name'); expect(input).toHaveFocus();
+  const input = screen.getByLabelText('Role name'); expect(input).toHaveFocus();
   fireEvent.change(input, { target: { value: 'Aardvark service' } });
   fireEvent.change(screen.getByLabelText('Default share weight'), { target: { value: '0.01' } });
   fireEvent(window, new Event('focus')); await loaded(false);
-  expect(screen.getByRole('form', { name: 'Edit shared job role' })).toBe(form);
+  expect(screen.getByRole('form', { name: 'Edit job role' })).toBe(form);
   expect(input).toHaveValue('Aardvark service');
   fireEvent.submit(form);
   await screen.findByText('Save confirmed. Shared roster refreshed.');
@@ -1158,8 +1158,8 @@ it('keeps an employee editor directly under the correct duplicate row, locks onl
   const employee = tables.employees.find(row => row.id === id(1000))!;
   const edit = employeeEdit(employee), row = edit.closest('li')!;
   fireEvent.click(edit);
-  const form = screen.getByRole('form', { name: 'Edit shared employee' });
-  const name = screen.getByLabelText('Shared employee name');
+  const form = screen.getByRole('form', { name: 'Edit employee' });
+  const name = screen.getByLabelText('Employee name');
   expect(name).toHaveFocus();
   expect(row).toContainElement(form);
   expect(edit.parentElement!.nextElementSibling).toContainElement(form);
@@ -1175,9 +1175,9 @@ it('keeps an employee editor directly under the correct duplicate row, locks onl
   expect(name).toHaveValue('Fictional Reassigned');
   expect(screen.getAllByRole('form')).toHaveLength(1);
   expect(screen.getByRole('option', { name: /Kitchen/ })).toBeDisabled();
-  fireEvent.change(screen.getByLabelText('Default shared job role'), { target: { value: id(21) } });
+  fireEvent.change(screen.getByLabelText('Default job role'), { target: { value: id(21) } });
   fireEvent(window, new Event('focus')); await loaded(false);
-  expect(screen.getByRole('form', { name: 'Edit shared employee' })).toBe(form);
+  expect(screen.getByRole('form', { name: 'Edit employee' })).toBe(form);
   expect(name).toHaveValue('Fictional Reassigned');
   fireEvent.submit(form);
   await screen.findByText('Save confirmed. Shared roster refreshed.');
@@ -1198,16 +1198,16 @@ it.each(['reassigned', 'removed'] as const)('keeps the same inline employee draf
   fireEvent.click(groupToggle('Zulu service'));
   const employee = tables.employees.find(row => row.id === id(1000))!;
   fireEvent.click(employeeEdit(employee));
-  const form = screen.getByRole('form', { name: 'Edit shared employee' });
-  fireEvent.change(screen.getByLabelText('Shared employee name'), { target: { value: 'Fictional conflict draft' } });
+  const form = screen.getByRole('form', { name: 'Edit employee' });
+  fireEvent.change(screen.getByLabelText('Employee name'), { target: { value: 'Fictional conflict draft' } });
   if (change === 'reassigned') Object.assign(employee, { default_role_id: id(21), xmin: '9999' });
   else tables.employees = tables.employees.filter(row => row.id !== employee.id);
   fireEvent(window, new Event('focus')); await loaded(false);
   expect(screen.getByRole('alert')).toHaveTextContent('record changed');
-  expect(screen.getByRole('form', { name: 'Edit shared employee' })).toBe(form);
+  expect(screen.getByRole('form', { name: 'Edit employee' })).toBe(form);
   expect(employeeGroup('Zulu service')).toContainElement(form);
-  expect(screen.getByLabelText('Shared employee name')).toHaveValue('Fictional conflict draft');
-  expect(screen.getByRole('button', { name: 'Save shared roster' })).toBeDisabled();
+  expect(screen.getByLabelText('Employee name')).toHaveValue('Fictional conflict draft');
+  expect(screen.getByRole('button', { name: 'Save roster' })).toBeDisabled();
   fireEvent.submit(form);
   expect(mutations()).toHaveLength(0);
   fireEvent.click(screen.getByRole('button', { name: 'Cancel draft' }));
@@ -1231,7 +1231,7 @@ it('omits the 49-person shared summary in local mode while keeping the local cal
       expect(within(workspace).queryByText(`${row.name} · ${row.is_active ? 'Active' : 'Inactive'}`)).not.toBeInTheDocument();
     }
   };
-  expect(screen.getByRole('radio', { name: 'Browser-local roster' })).toBeChecked();
+  expect(screen.getByRole('radio', { name: 'Local roster' })).toBeChecked();
   expect(screen.getByText('Restaurant: Fictional restaurant A')).toBeVisible();
   assertNoSharedSummary();
   const cash = screen.getByRole('textbox', { name: 'Cash Tips ($)' });
@@ -1248,13 +1248,13 @@ it('omits the 49-person shared summary in local mode while keeping the local cal
   assertNoSharedSummary();
   expect(screen.getByRole('textbox', { name: 'Cash Tips ($)' })).toBe(cash);
   expect(cash).toHaveValue('42.50');
-  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant roster' }));
   const participants = await screen.findByRole('group', { name: 'Participating employees' });
   fireEvent.click(within(participants).getByRole('button', { name: /^Bar.*selected/ }));
   fireEvent.click(within(participants).getByRole('checkbox', { name: /Fictional Employee 43/ }));
   fireEvent.change(screen.getByRole('textbox', { name: 'Cash Tips ($)' }), { target: { value: '100' } });
   expect(screen.getByRole('group', { name: 'Employee Fictional Employee 43' })).toHaveTextContent('$100.00');
-  fireEvent.click(screen.getByRole('radio', { name: 'Browser-local roster' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Local roster' }));
   assertNoSharedSummary();
   expect(screen.queryByRole('group', { name: 'Participating employees' })).not.toBeInTheDocument();
   expect(screen.getByRole('textbox', { name: 'Cash Tips ($)' })).toBe(cash);

@@ -159,7 +159,7 @@ it('shows no access for nonmembers and revoked memberships without roster querie
   expect(await screen.findByText('No restaurant access assigned')).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Manage roster' })).not.toBeInTheDocument();
   expect(requests.every(request => request.table === 'organization_memberships')).toBe(true);
-  expect(screen.getByRole('heading', { name: 'Tip Calculator Dashboard' })).toBeVisible();
+  expect(screen.getByRole('heading', { name: 'Calculation preview · Not saved' })).toBeVisible();
   expect(screen.queryByText(/invite|create restaurant|add member/i)).not.toBeInTheDocument();
 });
 
@@ -187,8 +187,8 @@ it('keeps management available for an authorized empty roster only after members
   tables.job_roles = []; tables.employees = [];
   render(gate());
   expect(await loaded()).toBeEnabled();
-  expect(screen.queryByText('No shared employees.')).not.toBeInTheDocument();
-  expect(screen.queryByText('No shared job roles.')).not.toBeInTheDocument();
+  expect(screen.queryByText('No employees.')).not.toBeInTheDocument();
+  expect(screen.queryByText('No job roles.')).not.toBeInTheDocument();
   expect(requests.filter(request => request.table === 'organization_memberships')).toHaveLength(2);
 });
 
@@ -229,7 +229,7 @@ it.each(['server', 'oversized'])('keeps freshly verified restaurant options afte
     expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Manage roster' })).not.toBeInTheDocument();
     refresh();
-    await waitFor(() => expect(screen.getByText('Checking restaurant access and loading shared roster…')).not.toBeVisible());
+    await waitFor(() => expect(screen.getByText('Checking restaurant access…')).not.toBeVisible());
     expect(await screen.findByRole('alert')).toHaveTextContent(message);
   }
   await userEvent.selectOptions(screen.getByLabelText('Restaurant'), orgB.id);
@@ -314,7 +314,7 @@ it.each(['denied', 'network', 'server'])('clears a successful snapshot on %s fai
   expect(screen.queryByRole('button', { name: 'Manage roster' })).not.toBeInTheDocument();
   expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
   expect(screen.queryByText(/private .* detail/)).not.toBeInTheDocument();
-  expect(screen.queryByText('No shared employees.')).not.toBeInTheDocument();
+  expect(screen.queryByText('No employees.')).not.toBeInTheDocument();
   intercept = () => undefined;
   refresh(); expect(await loaded()).toBeVisible();
 });
@@ -338,7 +338,7 @@ it('detects revocation on focus and never reports RLS-hidden reads as an empty r
   expect(await screen.findByText('No restaurant access assigned')).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Manage roster' })).not.toBeInTheDocument();
   expect(screen.queryByText(`${employee().name} · Active`)).not.toBeInTheDocument();
-  expect(screen.queryByText('No shared employees.')).not.toBeInTheDocument();
+  expect(screen.queryByText('No employees.')).not.toBeInTheDocument();
 });
 
 it('detects revocation between context and roster reads', async () => {
@@ -351,7 +351,7 @@ it('detects revocation between context and roster reads', async () => {
   };
   render(gate());
   expect(await screen.findByRole('alert')).toHaveTextContent('Restaurant access changed');
-  expect(screen.queryByText('No shared employees.')).not.toBeInTheDocument();
+  expect(screen.queryByText('No employees.')).not.toBeInTheDocument();
 });
 
 it('omits a 50-person shared summary and preserves local drafts through delayed focus, visibility, online and timer checks', async () => {
@@ -424,7 +424,7 @@ it.each(['truncated', 'missing-count'])('rejects %s responses instead of implyin
     : new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } }) : undefined;
   render(gate());
   expect(await screen.findByRole('alert')).toHaveTextContent('complete shared roster could not be loaded');
-  expect(screen.queryByText('No shared employees.')).not.toBeInTheDocument();
+  expect(screen.queryByText('No employees.')).not.toBeInTheDocument();
 });
 
 it('clears account A synchronously on account switch and ignores its delayed response', async () => {

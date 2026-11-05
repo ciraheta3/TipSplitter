@@ -87,7 +87,7 @@ const weightInput = (name = 'Fictional Avery') => screen.getByRole('textbox', { 
 const resultWeight = (name = 'Fictional Avery') => screen.getByRole('textbox', { name: new RegExp(`^Temporary share weight in results · ${name} `) });
 const editResultWeight = (value: string, name = 'Fictional Avery') => fireEvent.change(resultWeight(name), { target: { value } });
 const editWeight = (value: string, name = 'Fictional Avery') => fireEvent.change(weightInput(name), { target: { value } });
-const reload = () => fireEvent.click(screen.getByRole('button', { name: 'Reload shared roster / clear selection' }));
+const reload = () => fireEvent.click(screen.getByRole('button', { name: 'Reload roster / clear selection' }));
 const exactReads = () => requests.filter(request => request.url.searchParams.get('select') === calculationEmployeeProjection);
 function emit(event: AuthChangeEvent, candidate: Session | null) { session = candidate; listeners.forEach(callback => callback(event, candidate)); }
 
@@ -286,7 +286,7 @@ it.each(['failed', 'partial', 'revoked'])('clears the previous preview and fails
   expect(await screen.findByRole('alert')).toHaveTextContent('previous preview was cleared');
   expect(screen.queryByText('Fictional Avery · Fictional server')).not.toBeInTheDocument();
   expect(screen.queryByRole('group', { name: 'Employee Fictional Avery' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('heading', { name: 'Tip Calculator Dashboard' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Calculation preview · Not saved' })).not.toBeInTheDocument();
 });
 
 it.each(['account', 'project', 'restaurant'])('rejects late exact reads after a %s prop switch', async kind => {
@@ -349,7 +349,7 @@ it('reuses the authorized restaurant selector and clears selected A before loadi
   fireEvent.change(screen.getByLabelText('Restaurant'), { target: { value: otherOrg } });
   expect(screen.queryByText(/Fictional Avery/)).not.toBeInTheDocument();
   await loaded();
-  expect(screen.getByRole('heading', { name: 'Restaurant shared roster · Fictional Moonbeam' })).toBeVisible();
+  expect(screen.getByRole('heading', { name: 'Restaurant roster · Fictional Moonbeam' })).toBeVisible();
   expect(within(participating()).getByRole('checkbox', { name: /Fictional Blair/ })).not.toBeChecked();
   expect(weightInput('Fictional Blair')).toHaveValue('100');
 });
@@ -361,21 +361,21 @@ it('preserves the browser-local roster, inputs and storage through explicit sour
   const write = vi.spyOn(Storage.prototype, 'setItem');
   const read = vi.spyOn(Storage.prototype, 'getItem');
   render(<AuthGate runtime={{ mode: 'configured', project, client }} />);
-  await screen.findByRole('heading', { name: 'Tip Calculator Dashboard' });
+  await screen.findByRole('heading', { name: 'Calculation preview · Not saved' });
   fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '42.50' } });
-  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant roster' }));
   await loaded(); choose();
   editWeight('13.25');
   addTemporary();
   expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toBeVisible();
   expect(screen.queryByRole('group', { name: 'Employee Fictional Local' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Exclude Fictional Avery from calculation' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Exclude Fictional Guest from calculation' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Exclude from calculation · Fictional Avery' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Exclude from calculation · Fictional Guest' }));
   expect(within(temporaryRow()).getByRole('checkbox')).not.toBeChecked();
-  fireEvent.click(screen.getByRole('radio', { name: 'Browser-local roster' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Local roster' }));
   expect(screen.getByRole('group', { name: 'Employee Fictional Local' })).toHaveTextContent('$42.50');
   expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('42.50');
-  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant roster' }));
   await loaded();
   expect(within(participating()).getByRole('checkbox')).not.toBeChecked();
   expect(weightInput()).toHaveValue('100');
@@ -384,7 +384,7 @@ it('preserves the browser-local roster, inputs and storage through explicit sour
   expect(write).not.toHaveBeenCalled();
   expect(localStorage.getItem(accountRosterKey(project, userId))).toBe(saved);
   expect(localStorage.getItem('employees')).toBe('legacy untouched');
-  fireEvent.click(screen.getByRole('radio', { name: 'Browser-local roster' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Local roster' }));
   expect(screen.queryByRole('button', { name: /Exclude/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Remove Fictional Local' }));
   expect(screen.queryByRole('group', { name: 'Employee Fictional Local' })).not.toBeInTheDocument();
@@ -396,7 +396,7 @@ it('provides labelled mobile controls, keyboard selection, decimal inputs and an
   const late = deferred<Response>();
   intercept = request => request.table === 'employees' ? late.promise : undefined;
   render(panel());
-  expect(screen.getByRole('status')).toHaveTextContent('Verifying shared calculation access');
+  expect(screen.getByRole('status')).toHaveTextContent('Checking calculation access');
   await waitFor(() => expect(exactReads()).toHaveLength(1));
   await act(async () => late.resolve(response([employee()])));
   await loaded();
@@ -407,7 +407,7 @@ it('provides labelled mobile controls, keyboard selection, decimal inputs and an
   expect(screen.getByLabelText('Cash Tips ($)')).toHaveAttribute('inputmode', 'decimal');
   expect(screen.getByLabelText('Credit Tips ($)')).toHaveAttribute('inputmode', 'decimal');
   expect(checkbox.closest('label')).toHaveClass('min-h-12');
-  expect(screen.getByText(/Selection does not edit permanent defaults/)).toBeVisible();
+  expect(screen.getByText(/Changes apply to this calculation only/)).toBeVisible();
 });
 
 
@@ -558,7 +558,7 @@ it.each(['', ' ', '-1', 'abc', '1e2', 'Infinity', 'NaN', '0.001', '1.000', '9007
   expect(screen.getByRole('group', { name: 'Employee Fictional Casey' })).toHaveTextContent('—');
   expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('—');
   expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).not.toHaveTextContent('$');
-  fireEvent.click(screen.getByRole('button', { name: 'Exclude Fictional Avery from calculation' })); // Invalid but excluded: the valid selected employee can allocate.
+  fireEvent.click(screen.getByRole('button', { name: 'Exclude from calculation · Fictional Avery' })); // Invalid but excluded: the valid selected employee can allocate.
   expect(weightInput()).toHaveValue(value);
   expect(screen.getByRole('group', { name: 'Employee Fictional Casey' })).toHaveTextContent('$100.00');
   choose(); // Reselecting retains the invalid text and blocks payouts again.
@@ -607,7 +607,7 @@ it('retains deselected temporary shares in this preview without including their 
 it.each(['account', 'project', 'restaurant'])('clears temporary weights and selection when the %s scope changes', async kind => {
   const view = render(panel()); await loaded(); choose(); editResultWeight('13.25');
   addTemporary();
-  const staleExclude = screen.getByRole('button', { name: 'Exclude Fictional Avery from calculation' });
+  const staleExclude = screen.getByRole('button', { name: 'Exclude from calculation · Fictional Avery' });
   let overrides = {};
   if (kind === 'account') {
     session = { ...session!, user: { ...session!.user, id: otherUser } };
@@ -728,7 +728,7 @@ it.each(['', '-1', '0.001', '90071992547409.92'])('invalid selected temporary ed
   expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
   expect(screen.getAllByRole('alert').some(alert => alert.textContent?.includes('Fictional Guest'))).toBe(true);
   expect(screen.getByRole('group', { name: 'Employee Fictional Guest' })).toHaveTextContent('—');
-  fireEvent.click(screen.getByRole('button', { name: 'Exclude Fictional Guest from calculation' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Exclude from calculation · Fictional Guest' }));
   expect(within(temporaryRow()).getByRole('checkbox')).not.toBeChecked();
   expect(weightInput('Fictional Guest')).toHaveValue(value);
   expect(screen.getByRole('group', { name: 'Employee Fictional Avery' })).toHaveTextContent('$100.00');
@@ -793,7 +793,7 @@ it.each(['parent', 'revision', 'auth'] as const)('keeps a verified large preview
   fireEvent.change(credit, { target: { value: '25.50' } });
   fireEvent.click(rounding);
   fireEvent.change(draft, { target: { value: 'Fictional draft' } });
-  const exclude = screen.getByRole('button', { name: 'Exclude Fictional Guest from calculation' });
+  const exclude = screen.getByRole('button', { name: 'Exclude from calculation · Fictional Guest' });
   const originalPayout = payout.textContent;
   const late = deferred<Response>();
   intercept = request => request.table === 'organization_memberships' ? late.promise : undefined;
@@ -1073,7 +1073,7 @@ it.each([false, true])('excludes inline with a collapsed role, recalculates and 
   if (wholeDollars) fireEvent.click(screen.getByRole('checkbox', { name: 'Round down to whole dollar' }));
   expect(screen.getByRole('group', { name: 'Unassigned Remainder' })).toHaveTextContent(wholeDollars ? '+$1.00' : '+$0.01');
   fireEvent.click(roleToggle());
-  const exclude = screen.getByRole('button', { name: 'Exclude Fictional Avery from calculation' });
+  const exclude = screen.getByRole('button', { name: 'Exclude from calculation · Fictional Avery' });
   expect(exclude).toHaveClass('min-h-12', 'min-w-12');
   exclude.focus(); await userEvent.keyboard('{Enter}');
   expect(screen.queryByRole('group', { name: 'Employee Fictional Avery' })).not.toBeInTheDocument();
@@ -1099,7 +1099,7 @@ it('excludes only the stable ID among identical shared and temporary names and r
   addTemporary('Fictional Avery', '25'); addTemporary('Fictional Avery', '25');
   const temporaryRows = screen.getAllByRole('group', { name: 'Temporary participant Fictional Avery' });
   fireEvent.change(within(temporaryRows[0]).getByRole('textbox'), { target: { value: '12.50' } });
-  const buttons = screen.getAllByRole('button', { name: /Exclude Fictional Avery from calculation/ });
+  const buttons = screen.getAllByRole('button', { name: /Exclude from calculation · Fictional Avery/ });
   expect(new Set(buttons.map(button => button.getAttribute('aria-label'))).size).toBe(4);
   expect(buttons[0]).toHaveAccessibleName(new RegExp(id(6)));
   expect(buttons[1]).toHaveAccessibleName(new RegExp(id(7)));
@@ -1122,7 +1122,7 @@ it('excludes only the stable ID among identical shared and temporary names and r
 it.each(['revoked', 'failed', 'sign-out', 'reload'] as const)('clears inline exclusion controls on %s without accepting stale events', async kind => {
   const ownSession = session;
   const view = render(panel()); await loaded(); choose(); addTemporary();
-  const exclude = screen.getByRole('button', { name: 'Exclude Fictional Avery from calculation' });
+  const exclude = screen.getByRole('button', { name: 'Exclude from calculation · Fictional Avery' });
   if (kind === 'revoked') tables.organization_memberships = [];
   if (kind === 'failed') intercept = request => request.table === 'organization_memberships' ? new Response('{}', { status: 500 }) : undefined;
   act(() => {
@@ -1134,7 +1134,7 @@ it.each(['revoked', 'failed', 'sign-out', 'reload'] as const)('clears inline exc
   if (kind === 'reload') await loaded();
   else {
     await screen.findByRole('alert');
-    expect(screen.queryByRole('button', { name: /Exclude .* from calculation/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Exclude from calculation · .*/ })).not.toBeInTheDocument();
     tables.organization_memberships = [membership()]; intercept = () => undefined;
     if (kind === 'sign-out') act(() => emit('SIGNED_IN', ownSession));
     else reload();
@@ -1152,7 +1152,7 @@ async function enterManagement() {
   await screen.findByRole('button', { name: 'Add role' });
   expect(screen.getByRole('heading', { name: 'Manage roster' })).toHaveFocus();
   expect(screen.queryByRole('group', { name: 'Calculation source' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('heading', { name: 'Tip Calculator Dashboard' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Calculation preview · Not saved' })).not.toBeInTheDocument();
 }
 function editingVersions() {
   tables.job_roles.forEach(row => row.xmin = '701');
@@ -1166,7 +1166,7 @@ it.each(['local', 'shared'])('returns from management to the same mounted %s cal
   render(gate());
   await screen.findByRole('button', { name: 'Manage roster' });
   if (source === 'shared') {
-    fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Restaurant roster' }));
     await loaded(); choose(); editResultWeight('13.25'); addTemporary();
     fireEvent.change(screen.getByLabelText('Temporary participant name'), { target: { value: 'Fictional addition draft' } });
   }
@@ -1184,7 +1184,7 @@ it.each(['local', 'shared'])('returns from management to the same mounted %s cal
   fireEvent(window, new Event('focus'));
   await waitFor(() => expect(screen.getByRole('button', { name: 'Add role' })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
-  expect(screen.getByRole('radio', { name: source === 'shared' ? 'Restaurant shared roster' : 'Browser-local roster' })).toBeChecked();
+  expect(screen.getByRole('radio', { name: source === 'shared' ? 'Restaurant roster' : 'Local roster' })).toBeChecked();
   expect(screen.getByRole('textbox', { name: 'Cash Tips ($)' })).toBe(cash);
   expect(cash).toHaveValue('120.25'); expect(credit).toHaveValue('36.50'); expect(rounding).toBeChecked();
   expect(payout).toHaveTextContent(oldPayout!);
@@ -1200,7 +1200,7 @@ it.each(['local', 'shared'])('returns from management to the same mounted %s cal
 it.each(['revoked', 'failed', 'offline'])('clears the hidden shared calculation when management observes %s access', async kind => {
   editingVersions(); render(gate());
   await screen.findByRole('button', { name: 'Manage roster' });
-  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant roster' }));
   await loaded(); choose(); editResultWeight('invalid'); addTemporary();
   const oldPreview = screen.getByRole('region', { name: 'Shared calculation preview' });
   await enterManagement();
@@ -1224,12 +1224,12 @@ it.each(['revoked', 'failed', 'offline'])('clears the hidden shared calculation 
 it.each(['SIGNED_OUT', 'SIGNED_IN'] as const)('clears management and hidden preview immediately on an account event: %s', async event => {
   editingVersions(); render(gate());
   await screen.findByRole('button', { name: 'Manage roster' });
-  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant roster' }));
   await loaded(); choose(); addTemporary(); await enterManagement();
   fireEvent.click(screen.getByRole('button', { name: 'Add role' }));
-  fireEvent.change(screen.getByLabelText('Shared role name'), { target: { value: 'Fictional private draft' } });
+  fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Fictional private draft' } });
   act(() => emit(event, event === 'SIGNED_OUT' ? null : { ...session!, user: { ...session!.user, id: otherUser } }));
-  expect(screen.queryByRole('form', { name: 'Add shared job role' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('form', { name: 'Add job role' })).not.toBeInTheDocument();
   expect(screen.queryByText('Fictional private draft')).not.toBeInTheDocument();
   expect(screen.queryByRole('region', { name: 'Shared calculation preview', hidden: true })).not.toBeInTheDocument();
 });
@@ -1238,9 +1238,9 @@ it.each(['local', 'shared'])('does not grant management access to a signed-in no
   tables.organization_memberships = [];
   render(gate());
   await screen.findByText('No restaurant access assigned');
-  if (source === 'shared') fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+  if (source === 'shared') fireEvent.click(screen.getByRole('radio', { name: 'Restaurant roster' }));
   expect(screen.queryByRole('button', { name: 'Manage roster' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('region', { name: 'Manage shared roster · DEV' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Restaurant roster management' })).not.toBeInTheDocument();
   expect(screen.getByText('Roster management is unavailable until access to a selected restaurant is verified.')).toBeVisible();
   expect(requests.every(request => request.table === 'organization_memberships')).toBe(true);
 });
@@ -1248,7 +1248,7 @@ it.each(['local', 'shared'])('does not grant management access to a signed-in no
 it('retains invalid selected weight text and unavailable payouts when returning from management', async () => {
   editingVersions(); render(gate());
   await screen.findByRole('button', { name: 'Manage roster' });
-  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant roster' }));
   await loaded(); choose(); editResultWeight('invalid');
   await enterManagement();
   fireEvent.click(screen.getByRole('button', { name: 'Back to calculator' }));
@@ -1261,7 +1261,7 @@ it('retains invalid selected weight text and unavailable payouts when returning 
 it('a failed independent management verification rechecks and clears the hidden shared preview without waiting for the minute timer', async () => {
   editingVersions(); render(gate());
   await screen.findByRole('button', { name: 'Manage roster' });
-  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant shared roster' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant roster' }));
   await loaded(); choose(); addTemporary();
   const preview = screen.getByRole('region', { name: 'Shared calculation preview' });
   // Access disappears just before opening management; no focus/timer event fires.
@@ -1321,7 +1321,7 @@ it('edits and resets duplicate-name shared and temporary participants independen
   const resets = screen.getAllByRole('button', { name: /^Reset Fictional Avery to default in results/ });
   fireEvent.click(resets[2]); expect(inputs[2]).toHaveValue('025.00');
   fireEvent.change(inputs[2], { target: { value: '12.50' } });
-  fireEvent.click(screen.getAllByRole('button', { name: /Exclude Fictional Avery from calculation/ })[2]);
+  fireEvent.click(screen.getAllByRole('button', { name: /Exclude from calculation · Fictional Avery/ })[2]);
   const row = temporaryRow('Fictional Avery');
   expect(within(row).getByRole('textbox')).toHaveValue('12.50');
   fireEvent.click(within(row).getByRole('checkbox'));
@@ -1362,4 +1362,22 @@ it('retains both inline inputs through a successful pending access check without
   expect(resultWeight()).toBe(input); expect(input).toHaveValue('invalid'); expect(weightInput()).toHaveValue('invalid');
   expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
   expect(exactReads()).toHaveLength(1);
+});
+
+it('distinguishes preview exclusion from temporary removal with visible and accessible action names', async () => {
+  render(panel()); await loaded(); choose(); addTemporary();
+  expect(screen.getByRole('heading', { name: 'Restaurant roster · Fictional Juniper' })).toBeVisible();
+  expect(screen.getByRole('heading', { name: 'Calculation preview · Not saved' })).toBeVisible();
+  expect(screen.getByText('Preview amounts are not recorded payments.')).toBeVisible();
+  expect(screen.getByText(/Reloading uses the latest defaults, resets temporary weights and clears selections and temporary participants/)).toBeVisible();
+  expect(screen.queryByText(/Supabase|DEV|authentication mechanics/i)).not.toBeInTheDocument();
+  const exclude = screen.getByRole('button', { name: 'Exclude from calculation · Fictional Guest' });
+  const remove = screen.getByRole('button', { name: 'Remove temporary participant Fictional Guest' });
+  expect(exclude).toHaveTextContent('Exclude from calculation');
+  expect(remove).toHaveTextContent('Remove temporary participant');
+  exclude.focus(); await userEvent.keyboard('{Enter}');
+  expect(within(temporaryRow()).getByRole('checkbox')).not.toBeChecked();
+  expect(remove).toBeVisible();
+  remove.focus(); await userEvent.keyboard(' ');
+  expect(screen.queryByRole('group', { name: 'Temporary participant Fictional Guest' })).not.toBeInTheDocument();
 });
