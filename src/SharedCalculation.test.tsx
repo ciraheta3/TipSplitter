@@ -1595,3 +1595,118 @@ it('keeps corrupt shared data untouched until an edit and warns if autosave is d
   expect(screen.getByText(/Changes are session-only/)).toBeVisible();
   expect(localStorage.getItem(key)).toBe('{broken');
 });
+
+// These tests drive the real Auth gate + shared access readers with synthetic
+// transport. No stored shared draft may render before both gates have succeeded.
+async function expiringSharedDraft() {
+  session!.expires_at = Math.floor(Date.now() / 1000) + 10;
+  render(<AuthGate runtime={{ mode: 'configured', project, client }} />);
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Cash Tips ($)' }), { target: { value: '9.25' } });
+  fireEvent.click(screen.getByRole('radio', { name: 'Restaurant roster' }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  choose(); editWeight('0');
+  addTemporary('Fictional Guest', '01.50'); addTemporary('Fictional Guest', '25');
+  fireEvent.change(screen.getAllByRole('textbox', { name: /^Temporary share weight in results · Fictional Guest/ })[0], { target: { value: '1..' } });
+  fireEvent.change(screen.getByLabelText('Temporary participant name'), { target: { value: 'Unfinished fictional form' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Cash Tips ($)' }), { target: { value: '0012.34' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Credit Tips ($)' }), { target: { value: '87.66' } });
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Round down to whole dollar' }));
+  const { contextKey, localDraftKey, sharedDraftKey } = await import('./calculationDraft');
+  const key = sharedDraftKey(draftScope, org), context = contextKey(draftScope), local = localDraftKey(draftScope);
+  const saved = localStorage.getItem(key), savedContext = localStorage.getItem(context), savedLocal = localStorage.getItem(local);
+  expect(saved).not.toBeNull(); expect(savedContext).not.toBeNull(); expect(savedLocal).not.toBeNull();
+  return { key, context, local, saved, savedContext, savedLocal };
+}
+async function sharedAuthEvent(event: AuthChangeEvent, candidate: Session | null) {
+  await act(async () => { emit(event, candidate); await vi.advanceTimersByTimeAsync(0); });
+}
+
+it.each(['timer', 'expired browser reload', 'expired TOKEN_REFRESHED', 'null TOKEN_REFRESHED'])('retains local/shared storage at Auth %s and recovers only after fresh identity, membership and roster verification', async boundary => {
+  vi.useFakeTimers();
+  const { key, context, local, saved, savedContext, savedLocal } = await expiringSharedDraft();
+  if (boundary === 'timer' || boundary === 'expired browser reload') await act(async () => { await vi.advanceTimersByTimeAsync(10_001); });
+  if (boundary === 'expired browser reload') {
+    cleanup();
+    render(<AuthGate runtime={{ mode: 'configured', project, client }} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  }
+  if (boundary === 'expired TOKEN_REFRESHED') await sharedAuthEvent('TOKEN_REFRESHED', { ...session!, expires_at: Date.now() / 1000 - 1 });
+  if (boundary === 'null TOKEN_REFRESHED') await sharedAuthEvent('TOKEN_REFRESHED', null);
+  expect(screen.queryByRole('group', { name: 'Participating employees' })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Cash Tips ($)')).not.toBeInTheDocument();
+  expect(localStorage.getItem(key)).toBe(saved);
+  expect(localStorage.getItem(context)).toBe(savedContext);
+  expect(localStorage.getItem(local)).toBe(savedLocal);
+
+  const identity = deferred<unknown>(), membershipRead = deferred<Response>();
+  vi.mocked(client.auth.getUser).mockReturnValueOnce(identity.promise as ReturnType<typeof client.auth.getUser>);
+  intercept = request => request.table === 'organization_memberships' ? membershipRead.promise.then(result => result.clone()) : undefined;
+  const beforeReads = requests.length, beforeRosters = exactReads().length;
+  const nextSession = { ...session!, user: { id: userId, email: 'fictional@example.test' }, access_token: 'fictional-reauthenticated', expires_at: Date.now() / 1000 + 3600 } as Session;
+  await sharedAuthEvent('SIGNED_IN', nextSession);
+  expect(requests).toHaveLength(beforeReads);
+  expect(screen.queryByRole('group', { name: 'Participating employees' })).not.toBeInTheDocument();
+  await act(async () => { identity.resolve({ data: { user: nextSession.user }, error: null }); await vi.advanceTimersByTimeAsync(0); });
+  expect(requests.length).toBeGreaterThan(beforeReads);
+  expect(screen.queryByRole('group', { name: 'Participating employees' })).not.toBeInTheDocument();
+  expect(localStorage.getItem(key)).toBe(saved);
+  intercept = () => undefined;
+  await act(async () => { membershipRead.resolve(response([membership()])); await vi.advanceTimersByTimeAsync(0); });
+  expandGroups();
+  expect(exactReads()).toHaveLength(beforeRosters + 1);
+  expect(weightInput()).toHaveValue('0');
+  expect(within(participating()).getByRole('checkbox', { name: /Fictional Avery/ })).toBeChecked();
+  expect(screen.getByRole('textbox', { name: 'Cash Tips ($)' })).toHaveValue('0012.34');
+  expect(screen.getByRole('textbox', { name: 'Credit Tips ($)' })).toHaveValue('87.66');
+  expect(screen.getByRole('checkbox', { name: 'Round down to whole dollar' })).toBeChecked();
+  expect(screen.getByLabelText('Temporary participant name')).toHaveValue('Unfinished fictional form');
+  expect(screen.getAllByRole('textbox', { name: /^Temporary share weight in results · Fictional Guest/ })[0]).toHaveValue('1..');
+  expect(screen.getByRole('group', { name: 'Allocated Tips' })).toHaveTextContent('—');
+  expect(localStorage.getItem(key)).toBe(saved);
+  expect(localStorage.getItem(context)).toBe(savedContext);
+  expect(localStorage.getItem(local)).toBe(savedLocal);
+});
+
+it('clears a preserved shared draft on confirmed membership revocation after same-user reauthentication', async () => {
+  vi.useFakeTimers();
+  const { key, context, local, saved, savedLocal } = await expiringSharedDraft();
+  await act(async () => { await vi.advanceTimersByTimeAsync(10_001); });
+  expect(localStorage.getItem(key)).toBe(saved);
+  tables.organization_memberships = [];
+  await sharedAuthEvent('SIGNED_IN', { ...session!, access_token: 'fictional-reauthenticated', expires_at: Date.now() / 1000 + 3600 });
+  expect(screen.getByText('No restaurant access assigned')).toBeVisible();
+  expect(screen.queryByRole('group', { name: 'Participating employees' })).not.toBeInTheDocument();
+  expect(localStorage.getItem(key)).toBeNull();
+  expect(localStorage.getItem(context)).toBeNull();
+  expect(localStorage.getItem(local)).toBe(savedLocal);
+});
+
+it('preserves autosaved shared state through verified token refresh and two periodic access checks', async () => {
+  vi.useFakeTimers();
+  const { key, saved } = await expiringSharedDraft();
+  await sharedAuthEvent('TOKEN_REFRESHED', { ...session!, access_token: 'fictional-refreshed', expires_at: Date.now() / 1000 + 3600 });
+  for (let cycle = 0; cycle < 2; cycle++) {
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(weightInput()).toHaveValue('0');
+    expect(screen.getAllByRole('textbox', { name: /^Temporary share weight in results · Fictional Guest/ })[0]).toHaveValue('1..');
+    expect(localStorage.getItem(key)).toBe(saved);
+  }
+  expect(exactReads()).toHaveLength(1);
+});
+
+it('ignores delayed shared access failures after Auth expiry and still clears on later cross-tab SIGNED_OUT', async () => {
+  vi.useFakeTimers();
+  const { key, saved } = await expiringSharedDraft();
+  const late = deferred<Response>();
+  intercept = request => request.table === 'organization_memberships' ? late.promise.then(result => result.clone()) : undefined;
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh access / retry' }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(10_001); });
+  expect(screen.queryByRole('group', { name: 'Participating employees' })).not.toBeInTheDocument();
+  expect(localStorage.getItem(key)).toBe(saved);
+  await act(async () => { late.resolve(response([])); await vi.advanceTimersByTimeAsync(0); });
+  expect(localStorage.getItem(key)).toBe(saved);
+  await sharedAuthEvent('SIGNED_OUT', null);
+  expect(localStorage.getItem(key)).toBeNull();
+});

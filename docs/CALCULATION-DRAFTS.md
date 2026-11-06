@@ -25,19 +25,43 @@ including zero and invalid text. New roster rows start unselected. A changed
 underlying default with the same effective weight does not change the preview.
 
 Leaving shared mode, restaurant changes, sign-out/account changes, explicit reload
-and failed access verification clear shared persistence as well as memory. Explicit
-roster reload retains tip inputs/rounding, matching the existing mounted calculator.
+and failed restaurant access verification clear shared persistence as well as
+memory. Explicit roster reload retains tip inputs/rounding, matching the existing
+mounted calculator.
 Discard draft resets tips, rounding, selection, temporary participants and forms,
 keeping permanent rosters. Management navigation preserves the calculator.
-Auth verification failure/expiry clears the known account's calculation drafts;
-local roster records remain. Abort signals and scope keys reject late responses.
+Auth expiry hides/unmounts protected UI and invalidates pending verification without
+clearing saved drafts. Same-account reauthentication must verify Auth again; shared
+recovery then checks current membership and loads/reconciles a fresh roster. Local
+roster records remain. Abort signals, request generations and scope keys reject late
+responses, including refresh verification superseded by the expiry deadline. That
+response cannot reopen the gate; a fresh SDK event, sign-in or reload is required.
 
-Offline recovery never displays cached shared data. If startup cannot verify access,
-the shared draft is cleared, following the existing fail-closed failure policy;
-reconnect and re-enter the preview. Merely pending checks do not clear it. Browser-
-local drafts work offline if the application is available (configured Auth still
-requires its existing verification). No offline authorization or synchronization
-protocol is introduced.
+Offline recovery never displays cached shared data. An expired/missing/non-finite
+candidate expiry or recognized temporary Auth verification failure closes the gate
+and retains scoped drafts, without reading them into a calculator. Recognized
+failures are SDK retryable fetch errors, network TypeErrors, abort/timeouts, and
+Auth API HTTP 408/429/5xx. An Auth `bad_jwt` response for an already-expired local
+candidate also cannot establish revocation. Unknown errors, missing/mismatched
+verified users, and other Auth rejections still clear the candidate's drafts.
+Remembered candidate IDs are used only for clearing on later sign-out/account
+switch, never to authorize or display stored data.
+
+If a shared restaurant/roster access check fails after the Auth gate is open, its
+protected draft is still cleared under the existing policy, including offline or
+transient shared-access failures. These checks are unchanged. Merely pending checks
+do not clear it. Browser-local drafts work offline if the application is available;
+configured mode always requires verified Auth. There is no offline authorization
+cache or synchronization protocol.
+
+The Supabase SDK's `SIGNED_OUT` event does not expose whether the cause was an
+explicit local/cross-tab sign-out or SDK removal after a permanent session/refresh
+failure. All `SIGNED_OUT` events retain the conservative destructive policy, even
+after local expiry. Session absence in `INITIAL_SESSION`, `SIGNED_IN` or
+`TOKEN_REFRESHED` alone hides the UI without deleting drafts. A later different
+candidate account clears the previous scope even if it is no longer verified.
+Thus access-token expiry alone is recoverable, but an SDK-confirmed session removal
+can still destroy drafts. No extra SDK calls occur inside synchronous callbacks.
 
 Malformed, oversized or unsupported entries produce a warning and stay untouched
 until an explicit edit/discard replaces them. Storage denial/quota failure permits
@@ -55,9 +79,14 @@ browsing may not retain it. No multi-tab merge/conflict resolution is provided.
    `1..`. Add two temporary participants with the same name. Start a third form.
    Reload: verification precedes recovery; IDs remain distinct, text is exact,
    invalid selected text blocks payouts. Correct it and compare cents/remainder.
-3. On a real iPad, lock/sleep Safari, resume after suspension, and reload if Safari
-   did not reload itself. Leave open through two 60-second checks: no input loss,
-   recurring flash or scroll jump. Check narrow portrait and landscape layouts.
+3. On a real iPad, lock/sleep Safari beyond the current access-token lifetime,
+   resume and reload if needed. Without an SDK `SIGNED_OUT`, the gate must close
+   at expiry while drafts remain saved; same-user sign-in/refresh recovers them
+   only after fresh Auth and restaurant verification. Do not change hosted token
+   settings or expose tokens in logs. Leave open through two 60-second checks:
+   no input loss, recurring flash or scroll jump. Check portrait and landscape.
+   Also check sign-in as a different account after expiry: the old scope clears
+   and its inputs/participants never appear in the new account.
 4. Discard, reload, switch sources/restaurants, navigate to management and back,
    and sign out/in: deliberate clears stay cleared; navigation alone retains work.
    Use existing authorized test accounts to check account isolation.
@@ -81,3 +110,30 @@ browsing may not retain it. No multi-tab merge/conflict resolution is provided.
 - No migration, database test, hosted Supabase operation, manual deployment or real
   iPad/browser acceptance was performed. Independent review/CI and owner preview
   acceptance remain required.
+
+
+## P2 Auth-expiry correction verification (2026-11-06, Codex Cloud)
+
+The reviewed implementation deleted persisted drafts both at the local token
+expiry deadline and in generic verification catches. It also forgot the previous
+storage identity after losing verification, and the shared calculator's Auth
+listener could independently delete a draft on expired/null session events.
+The correction separates those transitions from deletion without relaxing the
+Auth gate, deadline, request generations or shared access checks described above.
+
+- `npx vitest run src/Auth.test.tsx src/SharedCalculation.test.tsx src/calculationDraft.test.ts`:
+  **227 passed**. Includes persisted-value assertions for expiry, expired browser
+  restoration, password/event reauthentication, deferred identity and membership
+  checks, invalid weight text, duplicate temporary identities, pending refresh,
+  late responses, explicit/cross-tab sign-out, account switching, temporary versus
+  confirmed Auth failures, revocation and two periodic restaurant checks.
+- `npm run check`: **505 Vitest tests**, **14** offline DEV-provisioning tests,
+  **41** offline roster-editing checks, ESLint, TypeScript and Vite build passed.
+- `git diff --check`: passed.
+- Separate database checks are unnecessary for this frontend lifecycle correction:
+  no SQL, RLS, migrations, API queries, database writes or payout rules changed.
+  `check:db`, real local Supabase integration and hosted checks were not run.
+- SDK session-removal/event behavior was inspected in the installed Auth client
+  source. The tests use synthetic accounts/records and mocked transport/jsdom;
+  live SDK/browser/iPad sleep/refresh behavior still needs owner acceptance.
+  No hosted Supabase DEV access, manual deployment or merge was performed.

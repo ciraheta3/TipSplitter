@@ -42,14 +42,18 @@ function SnapshotCalculator({ draftScope, client, userId, organizationId, restau
   const requestKey = `${reload}:${authRevision}:${accessRevision}`;
 
   useEffect(() => {
-    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
       controller.current?.abort();
-      if (!session || session.user.id !== userId) {
+      if (event === 'SIGNED_OUT' || !session || session.user.id !== userId
+          || !Number.isFinite(session.expires_at) || (session.expires_at ?? 0) * 1000 <= Date.now()) {
         invalidated.current = true;
         snapshot.current = undefined;
         setExpanded(new Set());
         hydrated.current = false;
-        clearDraft();
+        // Expiry/ambiguous session loss hides the snapshot without deleting its
+        // draft. Only sign-out/account changes delete here; actual failed shared
+        // access checks retain their existing clearing policy below.
+        if (event === 'SIGNED_OUT' || (session && session.user.id !== userId)) clearDraft();
         setState({ checking: false, accountChanged: true, error: 'Your account changed. Sign in again to continue.' });
       } else {
         invalidated.current = false;
