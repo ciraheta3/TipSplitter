@@ -6,9 +6,10 @@ import type { Organization, SharedRosterData } from './sharedRosterData';
 import ManageSharedRoster from './ManageSharedRoster';
 import SharedCalculation from './SharedCalculation';
 import { rosterSaveScope } from './sharedRosterSaveScope';
+import { clearSharedDrafts } from './calculationDraft';
 
 const buttonClass = 'rounded border border-blue-700 text-blue-800 px-4 py-2 disabled:opacity-50';
-type Props = { client: SupabaseClient; userId: string; calculationMode?: boolean; management?: boolean; onManagementChange?: (open: boolean) => void; calculatorControls?: ReactNode };
+type Props = { draftScope?: string; initialSelection?: string; client: SupabaseClient; userId: string; calculationMode?: boolean; management?: boolean; onManagementChange?: (open: boolean) => void; calculatorControls?: ReactNode };
 type State = {
   organizations: Organization[];
   selected: string;
@@ -19,12 +20,13 @@ type State = {
 };
 
 // Mounted only below the verified Auth gate and keyed there by project/account.
-export default function SharedRoster({ client, userId, calculationMode = false, management, onManagementChange, calculatorControls }: Props) {
-  const [selection, setSelection] = useState('');
+export default function SharedRoster({ draftScope, initialSelection, client, userId, calculationMode = false, management, onManagementChange, calculatorControls }: Props) {
+  const [selection, setSelection] = useState(initialSelection ?? '');
   const [ownManagement, setOwnManagement] = useState(false);
   const manage = management ?? ownManagement;
   const setManage = onManagementChange ?? setOwnManagement;
   const [revision, setRevision] = useState(0);
+  const [storageWarning, setStorageWarning] = useState(false);
   const refresh = () => setRevision(value => value + 1);
   useEffect(() => {
     const refreshAccess = () => setRevision(value => value + 1);
@@ -44,13 +46,15 @@ export default function SharedRoster({ client, userId, calculationMode = false, 
   }, []);
   return <section aria-labelledby="shared-roster-title" className="max-w-6xl mx-auto my-6 p-4 sm:p-6 bg-white border rounded-xl space-y-4">
     <h2 id="shared-roster-title" className="text-xl font-bold">Restaurant workspace</h2>
+    {storageWarning && <p role="alert">Draft could not be cleared from browser storage. Clear site data before leaving this device.</p>}
     <button className={buttonClass} onClick={refresh}>Refresh access / retry</button>
-    <RosterRequest key={rosterSaveScope(client, userId, selection).id} client={client} userId={userId} calculationMode={calculationMode} management={manage} onManagementChange={setManage} calculatorControls={calculatorControls} onAccessUnavailable={refresh} selection={selection} onSelect={setSelection} revision={revision} />
+    <RosterRequest draftScope={draftScope} key={rosterSaveScope(client, userId, selection).id} client={client} userId={userId} calculationMode={calculationMode} management={manage} onManagementChange={setManage} calculatorControls={calculatorControls} onAccessUnavailable={refresh} selection={selection} onSelect={id => { if (!clearSharedDrafts(draftScope)) setStorageWarning(true); setSelection(id); }} revision={revision} />
   </section>;
 }
 
-function RosterRequest({ client, userId, calculationMode, management: manage = false, onManagementChange: setManage = () => {}, selection, onSelect, revision, calculatorControls, onAccessUnavailable }: Props & { onAccessUnavailable: () => void; selection: string; onSelect: (id: string) => void; revision: number }) {
+function RosterRequest({ draftScope, client, userId, calculationMode, management: manage = false, onManagementChange: setManage = () => {}, selection, onSelect, revision, calculatorControls, onAccessUnavailable }: Props & { onAccessUnavailable: () => void; selection: string; onSelect: (id: string) => void; revision: number }) {
   const [state, setState] = useState<State>({ organizations: [], selected: '', loading: true });
+  const [storageWarning, setStorageWarning] = useState(false);
   const preferred = useRef(selection);
   const viewHeading = useRef<HTMLHeadingElement>(null);
   const entry = useRef<HTMLButtonElement>(null);
@@ -70,9 +74,11 @@ function RosterRequest({ client, userId, calculationMode, management: manage = f
         if (!current) return;
         const selected = selection || preferred.current || (organizations.length === 1 ? organizations[0].id : '');
         if (selected && !organizations.some(org => org.id === selected)) {
+          if (!clearSharedDrafts(draftScope)) setStorageWarning(true);
           setState({ organizations, selected: '', loading: false, error: organizations.length ? accessChanged : undefined, revision });
           return;
         }
+        if (!organizations.length && !clearSharedDrafts(draftScope)) setStorageWarning(true);
         if (!selected) {
           setState({ organizations, selected, loading: false, revision });
           return;
@@ -89,12 +95,16 @@ function RosterRequest({ client, userId, calculationMode, management: manage = f
           // Only roster failures retain this request's freshly verified options,
           // never the failed roster or its management subtree/draft.
           if (error instanceof SharedRosterAccessError) throw error;
-          if (current) setState({ organizations, selected, loading: false, revision,
+          if (current) {
+            if (!clearSharedDrafts(draftScope)) setStorageWarning(true);
+            setState({ organizations, selected, loading: false, revision,
             error: error instanceof SharedRosterError
               ? error.message : 'Unable to load shared data. Check your connection and retry.' });
+          }
         }
       } catch (error) {
         if (current) {
+          if (!clearSharedDrafts(draftScope)) setStorageWarning(true);
           setState({ organizations: [], selected: '', loading: false, revision,
           error: error instanceof SharedRosterError
             ? error.message : 'Unable to load shared data. Check your connection and retry.' });
@@ -102,11 +112,12 @@ function RosterRequest({ client, userId, calculationMode, management: manage = f
       }
     })();
     return () => { current = false; controller.abort(); };
-  }, [client, userId, selection, revision]);
+  }, [client, userId, selection, revision, draftScope]);
 
   const loading = state.loading || state.revision !== revision;
   const roster = navigator.onLine && !state.error ? state.roster : undefined;
   return <div className="space-y-4">
+    {storageWarning && <p role="alert">Draft could not be cleared from browser storage. Clear site data before leaving this device.</p>}
     {state.organizations.length > 1 || (state.error && state.organizations.length > 0) ? <div>
       <label htmlFor="shared-organization" className="block font-semibold">Restaurant</label>
       <select disabled={manage && !!roster} id="shared-organization" className="w-full sm:w-auto max-w-full border rounded p-2" value={state.selected} onChange={event => {
@@ -137,7 +148,7 @@ function RosterRequest({ client, userId, calculationMode, management: manage = f
     {/* View navigation never changes calculationMode or its scope. The mounted
         calculator continues verification and clears protected data on failure. */}
     {calculationMode && roster && <div hidden={manage} inert={manage}>
-      <SharedCalculation client={client} userId={userId} organizationId={state.selected} restaurantName={state.organizations.find(org => org.id === state.selected)!.name} accessRevision={revision} accessPending={loading} visible={!manage} />
+      <SharedCalculation draftScope={draftScope} client={client} userId={userId} organizationId={state.selected} restaurantName={state.organizations.find(org => org.id === state.selected)!.name} accessRevision={revision} accessPending={loading} visible={!manage} />
     </div>}
     {manage && roster && <ManageSharedRoster client={client} userId={userId} organizationId={state.selected} refreshRevision={revision} closeLabel="Back to calculator" onAccessUnavailable={onAccessUnavailable} onClose={() => setManage(false)} />}
 

@@ -1,8 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isAuthApiError, isAuthRetryableFetchError } from '@supabase/supabase-js';
 import type { Session, SupabaseClient, User } from '@supabase/supabase-js';
+
+import { clearAccountDrafts } from './calculationDraft';
+import { accountRosterKey } from './supabase';
 
 type AuthState = { user: User | null; loading: boolean; error: string | null };
 const sessionError = 'Your session could not be verified. Check your connection and sign in again.';
+
+function validExpiry(session: Session) {
+  return Number.isFinite(session.expires_at) && (session.expires_at ?? 0) * 1000 > Date.now();
+}
+
+// Retention is separate from authorization: every failure still closes the gate.
+// Unknown errors, missing users and identity mismatches remain destructive.
+function temporaryVerificationFailure(error: unknown, session: Session) {
+  if (isAuthRetryableFetchError(error) || error instanceof TypeError
+      || (error instanceof DOMException && (error.name === 'AbortError' || error.name === 'TimeoutError'))) return true;
+  return isAuthApiError(error) && (error.status === 408 || error.status === 429
+    || error.status >= 500
+    // GoTrue's bad_jwt also covers expired access tokens. An already-expired
+    // candidate alone cannot establish that the account/session was revoked.
+    || (error.code === 'bad_jwt' && !validExpiry(session)));
+}
 
 function signInError(error: unknown) {
   const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : null;
@@ -11,15 +31,28 @@ function signInError(error: unknown) {
     : 'Unable to sign in right now. Check your connection and try again.';
 }
 
-export function useAuth(client: SupabaseClient) {
+export function useAuth(client: SupabaseClient, project?: string) {
   const [state, setState] = useState<AuthState>({ user: null, loading: true, error: null });
+  const [draftWarning, setDraftWarning] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [signOutFailed, setSignOutFailed] = useState(false);
   const revision = useRef(0);
   const active = useRef(false);
   const signingOut = useRef(false);
+  // Keep the candidate's storage identity after expiry, for deletion on a later
+  // account switch/sign-out only. This ref never grants authenticated access.
+  const lastDraftUser = useRef<string | undefined>(undefined);
   const verified = useRef<{ token: string; user: User } | null>(null);
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const clearDrafts = useCallback((userId?: string) => {
+    if (project && userId) setDraftWarning(clearAccountDrafts(accountRosterKey(project, userId)) ? undefined : 'Draft could not be cleared from browser storage. Clear site data before leaving this device.');
+  }, [project]);
+
+  const trackDraftUser = useCallback((userId: string) => {
+    if (lastDraftUser.current && lastDraftUser.current !== userId) clearDrafts(lastDraftUser.current);
+    lastDraftUser.current = userId;
+  }, [clearDrafts]);
 
   const receive = useCallback(async (session: Session | null) => {
     const ticket = ++revision.current;
@@ -31,7 +64,8 @@ export function useAuth(client: SupabaseClient) {
       return;
     }
     const expiresAt = session.expires_at ?? 0;
-    const validTime = Number.isFinite(expiresAt) && expiresAt * 1000 > Date.now();
+    const validTime = validExpiry(session);
+    trackDraftUser(session.user.id);
     // Repeated SIGNED_IN events (e.g. tab focus) must not reset calculator drafts.
     const previous = verified.current;
     if (!previous || previous.user.id !== session.user.id || !validTime) {
@@ -40,14 +74,23 @@ export function useAuth(client: SupabaseClient) {
       setState({ user: null, loading: true, error: null });
     }
     try {
-      if (!validTime) throw new Error('Expired session');
+      if (!validTime) {
+        setState({ user: null, loading: false, error: sessionError });
+        return;
+      }
       const user = previous?.token === session.access_token && previous.user.id === session.user.id ? previous.user : await (async () => {
         const { data, error } = await client.auth.getUser(session.access_token);
-        if (error || !data.user || data.user.id !== session.user.id) throw new Error('Invalid session');
+        if (error) throw error;
+        if (!data.user || data.user.id !== session.user.id) throw new Error('Invalid session');
         return data.user;
       })();
       if (!active.current || ticket !== revision.current || signingOut.current) return;
-      if (expiresAt * 1000 <= Date.now()) throw new Error('Expired session');
+      if (!validExpiry(session)) {
+        clearTimeout(expiryTimer.current);
+        verified.current = null;
+        setState({ user: null, loading: false, error: sessionError });
+        return;
+      }
       clearTimeout(expiryTimer.current);
       verified.current = { token: session.access_token, user };
       setState({ user, loading: false, error: null });
@@ -58,32 +101,39 @@ export function useAuth(client: SupabaseClient) {
         verified.current = null;
         setState({ user: null, loading: false, error: 'Your session expired. Sign in again.' });
       }, Math.min(expiresAt * 1000 - Date.now(), 2_147_483_647));
-    } catch {
+    } catch (error) {
       if (!active.current || ticket !== revision.current || signingOut.current) return;
       clearTimeout(expiryTimer.current);
+      if (!temporaryVerificationFailure(error, session)) clearDrafts(session.user.id);
       verified.current = null;
       setState({ user: null, loading: false, error: sessionError });
     }
-  }, [client]);
+  }, [client, clearDrafts, trackDraftUser]);
 
   useEffect(() => {
     active.current = true;
     const generation = revision;
     let eventSeen = false;
     const timers = new Set<ReturnType<typeof setTimeout>>();
-    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
       eventSeen = true;
       if (signingOut.current) return;
       // Invalidate in-flight verification immediately, but make SDK calls outside
       // the synchronous auth callback to avoid re-entering its session lock.
       const eventTicket = ++revision.current;
-      if (!session || verified.current?.user.id !== session.user.id) {
+      // SIGNED_OUT has no reason code: preserve its existing cross-tab deletion
+      // policy even when the SDK emitted it after a permanent refresh failure.
+      const candidate = event === 'SIGNED_OUT' ? null : session;
+      if (event === 'SIGNED_OUT') clearDrafts(lastDraftUser.current);
+      if (candidate) trackDraftUser(candidate.user.id);
+      if (!candidate || verified.current?.user.id !== candidate.user.id || !validExpiry(candidate)) {
+        clearTimeout(expiryTimer.current);
         verified.current = null;
-        setState({ user: null, loading: !!session, error: null });
+        setState({ user: null, loading: !!candidate, error: null });
       }
       const timer = setTimeout(() => {
         timers.delete(timer);
-        if (eventTicket === revision.current) void receive(session);
+        if (eventTicket === revision.current) void receive(candidate);
       }, 0);
       timers.add(timer);
     });
@@ -105,7 +155,7 @@ export function useAuth(client: SupabaseClient) {
       timers.forEach(clearTimeout);
       clearTimeout(expiryTimer.current);
     };
-  }, [client, receive]);
+  }, [client, receive, clearDrafts, trackDraftUser]);
 
   const signIn = async (email: string, password: string) => {
     setBusy(true);
@@ -130,6 +180,7 @@ export function useAuth(client: SupabaseClient) {
     signingOut.current = true;
     setSignOutFailed(true);
     ++revision.current;
+    clearDrafts(verified.current?.user.id ?? lastDraftUser.current);
     verified.current = null;
     clearTimeout(expiryTimer.current);
     setBusy(true);
@@ -148,5 +199,5 @@ export function useAuth(client: SupabaseClient) {
     } finally { if (active.current) setBusy(false); }
   };
 
-  return { ...state, busy, signIn, signOut, signOutFailed };
+  return { ...state, draftWarning, busy, signIn, signOut, signOutFailed };
 }

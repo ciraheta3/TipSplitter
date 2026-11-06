@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 import { StrictMode } from 'react';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { AuthApiError, AuthRetryableFetchError } from '@supabase/supabase-js';
+import { emptyDraft, localDraftKey, saveDraft } from './calculationDraft';
 import type { AuthChangeEvent, Session, SupabaseClient, User } from '@supabase/supabase-js';
 import App from './App';
 import { accountRosterKey, getAuthRuntime } from './supabase';
@@ -44,7 +46,7 @@ const auth = {
     return { data: { subscription: { unsubscribe } } };
   }),
 };
-const dashboard = () => screen.queryByRole('heading', { name: 'Calculation preview · Not saved' });
+const dashboard = () => screen.queryByRole('heading', { name: 'Calculation preview' });
 async function emit(event: AuthChangeEvent, value: Session | null) {
   await act(async () => { listeners.forEach(callback => callback(event, value)); });
   // Wait for the callback's deferred verification, without timing sleeps.
@@ -105,7 +107,7 @@ it('keeps initial restoration and user verification behind a loading gate', asyn
 it('signs in using password Auth, verifies identity and clears the password', async () => {
   render(<App />);
   await login();
-  expect(await screen.findByRole('heading', { name: 'Calculation preview · Not saved' })).toBeVisible();
+  expect(await screen.findByRole('heading', { name: 'Calculation preview' })).toBeVisible();
   expect(auth.signInWithPassword).toHaveBeenCalledWith({ email: 'preview-a@example.test', password: 'fictional-password-only' });
   expect(auth.getUser).toHaveBeenCalledTimes(1);
   expect(screen.getByText('Preview amounts are not recorded payments.')).toBeVisible();
@@ -222,10 +224,14 @@ it('refreshes tokens and handles repeated focus events without resetting drafts'
   await userEvent.type(screen.getByLabelText('Cash Tips ($)'), '50');
   await emit('SIGNED_IN', session());
   expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('50');
+  const key = localDraftKey(accountRosterKey(project, userA.id));
+  const saved = localStorage.getItem(key);
+  expect(saved).not.toBeNull();
   expect(auth.getUser).toHaveBeenCalledTimes(1);
   await emit('TOKEN_REFRESHED', session(userA, 'refreshed-fictional-token'));
   await waitFor(() => expect(auth.getUser).toHaveBeenCalledTimes(2));
   expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('50');
+  expect(localStorage.getItem(key)).toBe(saved);
   auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: { message: 'invalid refresh' } });
   await emit('TOKEN_REFRESHED', session(userA, 'invalid-fictional-token'));
   expect(await screen.findByRole('alert')).toHaveTextContent('session could not be verified');
@@ -251,13 +257,17 @@ it('ignores stale restoration and verification responses after sign-out', async 
   await emit('SIGNED_OUT', null);
   await act(async () => initial.resolve({ data: { session: session() }, error: null }));
   expect(dashboard()).not.toBeInTheDocument();
+  const key = localDraftKey(accountRosterKey(project, userA.id));
+  saveDraft(key, { ...emptyDraft(), cashTip: '42.50' });
   const identity = deferred<{ data: { user: User }; error: null }>();
   auth.getUser.mockReturnValueOnce(identity.promise);
   act(() => { listeners.forEach(cb => cb('SIGNED_IN', session())); });
   await waitFor(() => expect(auth.getUser).toHaveBeenCalled());
   await emit('SIGNED_OUT', null);
+  expect(localStorage.getItem(key)).toBeNull();
   await act(async () => identity.resolve({ data: { user: userA }, error: null }));
   expect(dashboard()).not.toBeInTheDocument();
+  expect(localStorage.getItem(key)).toBeNull();
 });
 
 it('unsubscribes on unmount and tolerates StrictMode effect replay', async () => {
@@ -317,13 +327,16 @@ it('discards an older account verification after a newer account has been verifi
   expect(screen.queryByText(/Signed in as preview-a/)).not.toBeInTheDocument();
 });
 
-it('keeps the verified expiry deadline while a refreshed token is still being checked', async () => {
+it('expires a pending refresh without deleting drafts or accepting its superseded response', async () => {
   vi.useFakeTimers();
   const candidate = session(); candidate.expires_at = Math.floor(Date.now() / 1000) + 10;
   auth.getSession.mockResolvedValue({ data: { session: candidate }, error: null });
   render(<App />);
   await act(async () => {});
   expect(dashboard()).toBeVisible();
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '12.34' } });
+  const key = localDraftKey(accountRosterKey(project, userA.id)), saved = localStorage.getItem(key);
+  expect(saved).not.toBeNull();
   const pending = deferred<{ data: { user: User }; error: null }>();
   auth.getUser.mockReturnValueOnce(pending.promise);
   act(() => { listeners.forEach(callback => callback('TOKEN_REFRESHED', session(userA, 'pending-fictional-token'))); });
@@ -331,8 +344,13 @@ it('keeps the verified expiry deadline while a refreshed token is still being ch
   expect(dashboard()).toBeVisible();
   await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
   expect(dashboard()).not.toBeInTheDocument();
+  expect(localStorage.getItem(key)).toBe(saved);
   await act(async () => pending.resolve({ data: { user: userA }, error: null }));
   expect(dashboard()).not.toBeInTheDocument();
+  expect(localStorage.getItem(key)).toBe(saved);
+  await authEvent('SIGNED_IN', session());
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('12.34');
+  expect(localStorage.getItem(key)).toBe(saved);
 });
 
 it('writes new employees only to the verified account and reports account-scoped storage failures', async () => {
@@ -381,11 +399,236 @@ it('shows one application heading and DEV indicator with clear local source and 
   expect(screen.getByLabelText('Development environment')).toBeVisible();
   expect(screen.getByRole('radio', { name: 'Local roster' })).toBeChecked();
   expect(screen.getByRole('radio', { name: 'Restaurant roster' })).not.toBeChecked();
-  expect(screen.getByRole('heading', { name: 'Calculation preview · Not saved' })).toBeVisible();
+  expect(screen.getByRole('heading', { name: 'Calculation preview' })).toBeVisible();
   expect(screen.getByText('Preview amounts are not recorded payments.')).toBeVisible();
   expect(screen.getByText('Local roster · Saved in this browser only.')).toBeVisible();
   expect(screen.getByText(/Leaving Restaurant roster clears its selections, temporary weights and temporary participants/)).toBeVisible();
   expect(screen.queryByText(/Supabase|tenant records|authentication alone|Signing in does not grant/i)).not.toBeInTheDocument();
   expect(await screen.findByText('No restaurant access assigned')).toBeVisible();
   expect(screen.getByText(/Contact the project owner for access/)).toBeVisible();
+});
+
+it('restores account-local tips only after verified Auth and clears persistence on explicit sign-out', async () => {
+  const { emptyDraft, localDraftKey, readDraft, saveDraft } = await import('./calculationDraft');
+  const key = localDraftKey(accountRosterKey(project, userA.id));
+  saveDraft(key, { ...emptyDraft(), cashTip: '42.50', roundToDollar: true });
+  const pending = deferred<{ data: { user: User }; error: null }>();
+  auth.getSession.mockResolvedValue({ data: { session: session() }, error: null });
+  auth.getUser.mockReturnValueOnce(pending.promise);
+  render(<App />);
+  expect(screen.queryByLabelText('Cash Tips ($)')).not.toBeInTheDocument();
+  await act(async () => pending.resolve({ data: { user: userA }, error: null }));
+  expect(await screen.findByLabelText('Cash Tips ($)')).toHaveValue('42.50');
+  expect(screen.getByLabelText('Round down to whole dollar')).toBeChecked();
+  await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+  expect(readDraft(key).value).toBeUndefined();
+  await login();
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('');
+});
+
+it('clears the previous account draft on account switch without overwriting the next account draft', async () => {
+  const { emptyDraft, localDraftKey, readDraft, saveDraft } = await import('./calculationDraft');
+  const keyA = localDraftKey(accountRosterKey(project, userA.id));
+  const keyB = localDraftKey(accountRosterKey(project, userB.id));
+  saveDraft(keyA, { ...emptyDraft(), cashTip: '42.50' });
+  saveDraft(keyB, { ...emptyDraft(), cashTip: '8.25' });
+  auth.getSession.mockResolvedValue({ data: { session: session() }, error: null });
+  render(<App />);
+  expect(await screen.findByLabelText('Cash Tips ($)')).toHaveValue('42.50');
+  await emit('SIGNED_IN', session(userB));
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('8.25');
+  expect(readDraft(keyA).value).toBeUndefined();
+  expect(readDraft(keyB).value!.cashTip).toBe('8.25');
+});
+
+it('clears a candidate account draft on failed initial Auth verification', async () => {
+  const { emptyDraft, localDraftKey, readDraft, saveDraft } = await import('./calculationDraft');
+  const key = localDraftKey(accountRosterKey(project, userA.id));
+  saveDraft(key, { ...emptyDraft(), cashTip: '42.50' });
+  auth.getSession.mockResolvedValue({ data: { session: session() }, error: null });
+  auth.getUser.mockResolvedValue({ data: { user: null }, error: { message: 'unverified' } });
+  render(<App />);
+  await screen.findByRole('alert');
+  expect(screen.queryByLabelText('Cash Tips ($)')).not.toBeInTheDocument();
+  expect(readDraft(key).value).toBeUndefined();
+});
+
+it('remounts the Auth gate on project/client change before reading another project draft', async () => {
+  const { emptyDraft, localDraftKey, saveDraft } = await import('./calculationDraft');
+  const { default: AuthGate } = await import('./AuthGate');
+  const firstClient = { auth } as unknown as SupabaseClient;
+  auth.getSession.mockResolvedValue({ data: { session: session() }, error: null });
+  const view = render(<AuthGate runtime={{ mode: 'configured', project, client: firstClient }} />);
+  await screen.findByLabelText('Cash Tips ($)');
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '42.50' } });
+  const nextProject = 'https://another-fictional.example.test';
+  saveDraft(localDraftKey(accountRosterKey(nextProject, userA.id)), { ...emptyDraft(), cashTip: '8.25' });
+  const pending = deferred<{ data: { user: User }; error: null }>();
+  auth.getUser.mockReturnValueOnce(pending.promise);
+  view.rerender(<AuthGate runtime={{ mode: 'configured', project: nextProject, client: { auth } as unknown as SupabaseClient }} />);
+  expect(screen.queryByLabelText('Cash Tips ($)')).not.toBeInTheDocument();
+  await act(async () => pending.resolve({ data: { user: userA }, error: null }));
+  expect(await screen.findByLabelText('Cash Tips ($)')).toHaveValue('8.25');
+});
+
+
+// Auth callbacks defer SDK reads; flush them explicitly under fake timers.
+async function authEvent(event: AuthChangeEvent, candidate: Session | null) {
+  await act(async () => {
+    listeners.forEach(callback => callback(event, candidate));
+    await vi.advanceTimersByTimeAsync(0);
+  });
+}
+
+it.each(['SIGNED_IN', 'TOKEN_REFRESHED'] as const)('recovers an autosaved local draft after expiry and same-user %s verification', async event => {
+  vi.useFakeTimers();
+  const candidate = session(); candidate.expires_at = Math.floor(Date.now() / 1000) + 10;
+  auth.getSession.mockResolvedValue({ data: { session: candidate }, error: null });
+  render(<App />); await act(async () => {});
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '0012.34' } });
+  fireEvent.change(screen.getByLabelText('Credit Tips ($)'), { target: { value: '87.66' } });
+  fireEvent.click(screen.getByLabelText('Round down to whole dollar'));
+  const key = localDraftKey(accountRosterKey(project, userA.id)), saved = localStorage.getItem(key);
+  expect(saved).not.toBeNull();
+  await act(async () => { await vi.advanceTimersByTimeAsync(10_001); });
+  expect(dashboard()).not.toBeInTheDocument();
+  expect(localStorage.getItem(key)).toBe(saved);
+  const verified = deferred<{ data: { user: User }; error: null }>();
+  auth.getUser.mockReturnValueOnce(verified.promise);
+  await authEvent(event, session(userA, 'reauthenticated-fictional-token'));
+  expect(dashboard()).not.toBeInTheDocument();
+  expect(localStorage.getItem(key)).toBe(saved);
+  await act(async () => verified.resolve({ data: { user: userA }, error: null }));
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('0012.34');
+  expect(screen.getByLabelText('Credit Tips ($)')).toHaveValue('87.66');
+  expect(screen.getByLabelText('Round down to whole dollar')).toBeChecked();
+  expect(localStorage.getItem(key)).toBe(saved);
+});
+
+it.each(['past', 'missing', 'NaN', 'infinite'])('preserves an unread draft behind the Auth gate for %s initial expires_at', async kind => {
+  vi.useFakeTimers();
+  const candidate = session();
+  if (kind === 'past') candidate.expires_at = Math.floor(Date.now() / 1000) - 1;
+  if (kind === 'missing') delete candidate.expires_at;
+  if (kind === 'NaN') candidate.expires_at = NaN;
+  if (kind === 'infinite') candidate.expires_at = Infinity;
+  const key = localDraftKey(accountRosterKey(project, userA.id));
+  saveDraft(key, { ...emptyDraft(), cashTip: '42.50' });
+  const saved = localStorage.getItem(key);
+  auth.getSession.mockResolvedValue({ data: { session: candidate }, error: null });
+  const read = vi.spyOn(Storage.prototype, 'getItem');
+  render(<App />); await act(async () => {});
+  expect(dashboard()).not.toBeInTheDocument();
+  expect(auth.getUser).not.toHaveBeenCalled();
+  expect(read).not.toHaveBeenCalled();
+  expect(localStorage.getItem(key)).toBe(saved);
+  await authEvent('SIGNED_IN', session());
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('42.50');
+  expect(localStorage.getItem(key)).toBe(saved);
+});
+
+it.each([
+  ['network', () => new TypeError('synthetic network failure'), true],
+  ['SDK retryable', () => new AuthRetryableFetchError('synthetic retry', 503), true],
+  ['abort', () => new DOMException('synthetic abort', 'AbortError'), true],
+  ['timeout', () => new DOMException('synthetic timeout', 'TimeoutError'), true],
+  ['rate limit', () => new AuthApiError('synthetic limit', 429, 'over_request_rate_limit'), true],
+  ['server', () => new AuthApiError('synthetic server', 503, 'unexpected_failure'), true],
+  ['invalid JWT before expiry', () => new AuthApiError('synthetic invalid JWT', 401, 'bad_jwt'), false],
+  ['revoked session', () => new AuthApiError('synthetic revoked session', 401, 'session_not_found'), false],
+  ['banned account', () => new AuthApiError('synthetic banned', 403, 'user_banned'), false],
+  ['unknown', () => new Error('synthetic unknown'), false],
+] as const)('closes the gate for %s verification errors and retains drafts only for recognized temporary failures', async (_kind, error, retain) => {
+  const key = localDraftKey(accountRosterKey(project, userA.id));
+  saveDraft(key, { ...emptyDraft(), cashTip: '42.50' });
+  const saved = localStorage.getItem(key);
+  auth.getSession.mockResolvedValue({ data: { session: session() }, error: null });
+  auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: error() });
+  render(<App />);
+  await screen.findByRole('alert');
+  expect(dashboard()).not.toBeInTheDocument();
+  expect(localStorage.getItem(key)).toBe(retain ? saved : null);
+});
+
+it.each(['success', 'expired JWT', 'revoked session', 'mismatched identity'])('handles %s arriving after a candidate expires during initial verification', async kind => {
+  vi.useFakeTimers();
+  const candidate = session(); candidate.expires_at = Math.floor(Date.now() / 1000) + 10;
+  const key = localDraftKey(accountRosterKey(project, userA.id));
+  saveDraft(key, { ...emptyDraft(), cashTip: '42.50' });
+  const saved = localStorage.getItem(key);
+  const verification = deferred<unknown>();
+  auth.getSession.mockResolvedValue({ data: { session: candidate }, error: null });
+  auth.getUser.mockReturnValueOnce(verification.promise);
+  render(<App />); await act(async () => {});
+  await act(async () => { await vi.advanceTimersByTimeAsync(10_001); });
+  await act(async () => verification.resolve({
+    data: { user: kind === 'success' ? userA : kind === 'mismatched identity' ? userB : null },
+    error: kind === 'expired JWT' ? new AuthApiError('synthetic expired JWT', 401, 'bad_jwt')
+      : kind === 'revoked session' ? new AuthApiError('synthetic revoked', 401, 'session_not_found') : null,
+  }));
+  expect(dashboard()).not.toBeInTheDocument();
+  expect(localStorage.getItem(key)).toBe(kind === 'success' || kind === 'expired JWT' ? saved : null);
+});
+
+it.each(['INITIAL_SESSION', 'SIGNED_IN', 'TOKEN_REFRESHED'] as const)('retains drafts on ambiguous %s with no session, but SIGNED_OUT still clears after expiry', async event => {
+  vi.useFakeTimers();
+  const candidate = session(); candidate.expires_at = Math.floor(Date.now() / 1000) + 10;
+  auth.getSession.mockResolvedValue({ data: { session: candidate }, error: null });
+  render(<App />); await act(async () => {});
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '42.50' } });
+  const key = localDraftKey(accountRosterKey(project, userA.id)), saved = localStorage.getItem(key);
+  await authEvent(event, null);
+  expect(dashboard()).not.toBeInTheDocument();
+  expect(localStorage.getItem(key)).toBe(saved);
+  await authEvent('SIGNED_IN', candidate);
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('42.50');
+  await act(async () => { await vi.advanceTimersByTimeAsync(10_001); });
+  expect(localStorage.getItem(key)).toBe(saved);
+  await authEvent('SIGNED_OUT', null);
+  expect(dashboard()).not.toBeInTheDocument();
+  expect(localStorage.getItem(key)).toBeNull();
+});
+
+it('clears the previous account draft when switching accounts after expiry, and ignores late verification', async () => {
+  vi.useFakeTimers();
+  const candidate = session(); candidate.expires_at = Math.floor(Date.now() / 1000) + 10;
+  auth.getSession.mockResolvedValue({ data: { session: candidate }, error: null });
+  render(<App />); await act(async () => {});
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '42.50' } });
+  const keyA = localDraftKey(accountRosterKey(project, userA.id));
+  const keyB = localDraftKey(accountRosterKey(project, userB.id));
+  saveDraft(keyB, { ...emptyDraft(), cashTip: '8.25' });
+  const savedB = localStorage.getItem(keyB);
+  await act(async () => { await vi.advanceTimersByTimeAsync(10_001); });
+  const late = deferred<{ data: { user: User }; error: null }>();
+  auth.getUser.mockReturnValueOnce(late.promise);
+  await authEvent('SIGNED_IN', session());
+  expect(dashboard()).not.toBeInTheDocument();
+  await authEvent('SIGNED_IN', session(userB));
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('8.25');
+  expect(localStorage.getItem(keyA)).toBeNull();
+  expect(localStorage.getItem(keyB)).toBe(savedB);
+  await act(async () => late.resolve({ data: { user: userA }, error: null }));
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('8.25');
+  expect(localStorage.getItem(keyA)).toBeNull();
+  expect(localStorage.getItem(keyB)).toBe(savedB);
+});
+
+
+it('recovers an expired draft through password sign-in without relying on an SDK event', async () => {
+  vi.useFakeTimers();
+  const candidate = session(); candidate.expires_at = Math.floor(Date.now() / 1000) + 10;
+  auth.getSession.mockResolvedValue({ data: { session: candidate }, error: null });
+  render(<App />); await act(async () => {});
+  fireEvent.change(screen.getByLabelText('Cash Tips ($)'), { target: { value: '42.50' } });
+  const key = localDraftKey(accountRosterKey(project, userA.id)), saved = localStorage.getItem(key);
+  await act(async () => { await vi.advanceTimersByTimeAsync(10_001); });
+  expect(dashboard()).not.toBeInTheDocument();
+  expect(localStorage.getItem(key)).toBe(saved);
+  fireEvent.change(screen.getByLabelText('Email'), { target: { value: userA.email } });
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'fictional-password-only' } });
+  await act(async () => fireEvent.submit(screen.getByLabelText('Email').closest('form')!));
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('42.50');
+  expect(localStorage.getItem(key)).toBe(saved);
+  expect(auth.getUser).toHaveBeenCalledTimes(2);
 });

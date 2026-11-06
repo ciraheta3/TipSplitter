@@ -1,4 +1,7 @@
 import { Fragment, useId, useState } from 'react';
+import { localDraftKey } from './calculationDraft';
+import type { TipDraft } from './calculationDraft';
+import { useCalculationDraft } from './useCalculationDraft';
 import { groupCalculationParticipants } from './sharedCalculationGroups';
 import type { Distribution } from './calculation';
 import type { CalculationParticipant } from './sharedCalculationData';
@@ -47,6 +50,7 @@ function loadRoster(storageKey: string): RosterState {
 
 type Props = {
   storageKey: string;
+  draft?: { value: TipDraft; onChange: (change: Partial<TipDraft>) => void };
   shared?: {
     participants: CalculationParticipant[];
     selectedRows: (Omit<CalculationParticipant, 'weightUnits'> & { defaultWeightText: string; weightError?: string })[];
@@ -60,11 +64,11 @@ type Props = {
   };
 };
 
-export default function Calculator({ storageKey, shared }: Props) {
+export default function Calculator({ storageKey, shared, draft }: Props) {
   const weightPrefix = useId();
-  const [cashTip, setCashTip] = useState('');
-  const [creditTip, setCreditTip] = useState('');
-  const [roundToDollar, setRoundToDollar] = useState(false);
+  const localDraft = useCalculationDraft(shared ? undefined : localDraftKey(storageKey));
+  const { cashTip, creditTip, roundToDollar } = draft?.value ?? localDraft.value;
+  const changeTips = draft?.onChange ?? localDraft.update;
   const [roster, setRoster] = useState<RosterState>(() => shared ? { employees: [], error: null } : loadRoster(storageKey));
   const [formError, setFormError] = useState<string | null>(null);
   const { employees } = roster;
@@ -127,16 +131,21 @@ export default function Calculator({ storageKey, shared }: Props) {
   return (
     <div hidden={shared?.unavailable} className="min-h-screen bg-gray-50 text-gray-900 p-4 md:p-8 font-sans">
       <div className="max-w-4xl mx-auto space-y-6">
+        {!shared && <div className="text-sm space-y-2">
+          {localDraft.message && <p>{localDraft.message}</p>}
+          <button type="button" className="rounded border px-4 py-2" onClick={() => localDraft.clear()}>Discard draft / Start fresh</button>
+        </div>}
+
 
         {/* Calculation summary */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4 border-b pb-4">
-            <div><h2 className="text-2xl font-bold text-gray-800">Calculation preview · Not saved</h2><p className="text-sm text-gray-600 mt-1">Preview amounts are not recorded payments.</p></div>
+            <div><h2 className="text-2xl font-bold text-gray-800">Calculation preview</h2><p className="text-sm text-gray-600 mt-1">Preview amounts are not recorded payments.</p></div>
             <label className="flex items-center space-x-2 text-sm font-semibold cursor-pointer">
               <input
                 type="checkbox"
                 checked={roundToDollar}
-                onChange={(e) => setRoundToDollar(e.target.checked)}
+                onChange={(e) => changeTips({ roundToDollar: e.target.checked })}
                 className="w-4 h-4"
               />
               <span>Round down to whole dollar</span>
@@ -181,7 +190,7 @@ export default function Calculator({ storageKey, shared }: Props) {
                     type="text"
                     inputMode="decimal"
                     value={cashTip}
-                    onChange={(e) => setCashTip(e.target.value)}
+                    onChange={(e) => changeTips({ cashTip: e.target.value })}
                     className="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
@@ -192,7 +201,7 @@ export default function Calculator({ storageKey, shared }: Props) {
                     type="text"
                     inputMode="decimal"
                     value={creditTip}
-                    onChange={(e) => setCreditTip(e.target.value)}
+                    onChange={(e) => changeTips({ creditTip: e.target.value })}
                     className="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>

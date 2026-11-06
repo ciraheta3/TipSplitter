@@ -132,7 +132,7 @@ describe('TipSplitter interface', () => {
     expect(employee('Test Avery').getByText('Weight: 100')).toBeVisible();
   });
 
-  it('persists roster edits across remounts while cash and credit drafts reset', async () => {
+  it('recovers autosaved cash, credit and rounding with the independent local roster', async () => {
     const user = userEvent.setup();
     const first = render(<Calculator storageKey="employees" />);
     await addEmployee(user, 'Test Avery', '100');
@@ -144,14 +144,18 @@ describe('TipSplitter interface', () => {
     await user.type(screen.getByRole('textbox', { name: 'Cash Tips ($)' }), '40');
     await user.type(screen.getByRole('textbox', { name: 'Credit Tips ($)' }), '60');
     expect(employee('Test Avery').getByText('$100.00')).toBeVisible();
+    await user.click(screen.getByRole('checkbox', { name: 'Round down to whole dollar' }));
+    expect(screen.getByText('Draft saved on this device.')).toBeVisible();
     first.unmount();
     render(<Calculator storageKey="employees" />);
     expect(employee('Test Avery').getByText('Weight: 100')).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Remove Test Blake' })).not.toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Cash Tips ($)' })).toHaveValue('');
-    expect(screen.getByRole('textbox', { name: 'Credit Tips ($)' })).toHaveValue('');
-    expect(metric('Total Tip').getByText('$0.00')).toBeVisible();
-    expect(employee('Test Avery').getByText('$0.00')).toBeVisible();
+    expect(screen.getByRole('textbox', { name: 'Cash Tips ($)' })).toHaveValue('40');
+    expect(screen.getByRole('textbox', { name: 'Credit Tips ($)' })).toHaveValue('60');
+    expect(screen.getByRole('checkbox', { name: 'Round down to whole dollar' })).toBeChecked();
+    expect(screen.getByText('Draft restored on this device.')).toBeVisible();
+    expect(metric('Total Tip').getByText('$100.00')).toBeVisible();
+    expect(employee('Test Avery').getByText('$100.00')).toBeVisible();
   });
 
   it.each(['empty', 'zero-weight'] as const)('leaves the full pool unassigned for an %s roster in both modes', async kind => {
@@ -209,4 +213,28 @@ describe('TipSplitter interface', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(metric('Unassigned Remainder').getByText('+$100.00')).toBeVisible();
   });
+});
+
+it('discards local draft inputs without deleting the permanent roster, including after reload', async () => {
+  const user = userEvent.setup();
+  const first = render(<Calculator storageKey="employees" />);
+  await addEmployee(user, 'Test Avery', '100');
+  await user.type(screen.getByLabelText('Cash Tips ($)'), '1..');
+  await user.click(screen.getByRole('button', { name: 'Discard draft / Start fresh' }));
+  first.unmount(); render(<Calculator storageKey="employees" />);
+  expect(screen.getByLabelText('Cash Tips ($)')).toHaveValue('');
+  expect(employee('Test Avery')).toBeDefined();
+});
+
+it('keeps corrupted drafts untouched on mount and supports session edits when storage is denied', async () => {
+  const { localDraftKey } = await import('./calculationDraft');
+  const key = localDraftKey('employees');
+  localStorage.setItem(key, '{broken');
+  render(<Calculator storageKey="employees" />);
+  expect(screen.getByText(/Draft could not be read/)).toBeVisible();
+  expect(localStorage.getItem(key)).toBe('{broken');
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied'); });
+  await userEvent.type(screen.getByLabelText('Cash Tips ($)'), '12.34');
+  expect(metric('Total Tip').getByText('$12.34')).toBeVisible();
+  expect(screen.getByText(/Changes are session-only/)).toBeVisible();
 });

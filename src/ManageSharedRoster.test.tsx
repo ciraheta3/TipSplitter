@@ -416,7 +416,7 @@ it('keeps local/account calculator storage and payouts isolated from shared writ
   expect(within(screen.getByRole('group', { name: 'Employee Fictional local' })).getByText('$100.00')).toBeVisible();
   expect(localStorage.getItem('fictional-account')).toBe(own);
   expect(localStorage.getItem('employees')).toBe('unrelated legacy');
-  expect(write).not.toHaveBeenCalled();
+  expect(write.mock.calls.every(([key]) => key.startsWith('tipsplitter:draft:v1:'))).toBe(true);
 });
 
 it.each(['reload', 'auth-refresh', 'unmount', 'parent-focus'])('retains uncertainty across %s when the insert commits after the next read', async kind => {

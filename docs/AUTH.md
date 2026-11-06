@@ -192,3 +192,32 @@ Codex Cloud, Node 24.19.0 / npm 11.9.0:
   records the owner's report that the DEV login/logout checklist was exercised; its
   individual outcomes and temporary-account cleanup were not independently documented
   there. Hosted refresh/expiry and production acceptance remain unverified.
+
+## Draft lifecycle update (Issue #56)
+
+The earlier Auth milestone's reset-on-reload behavior is superseded by
+[device-local draft recovery](CALCULATION-DRAFTS.md). After verified Auth, the
+same project/account can recover local inputs and the intended shared source/
+restaurant. Shared data requires fresh access/roster verification. Token expiry
+closes/unmounts the gate and invalidates pending verification but retains drafts.
+Expired/invalid-time initial candidates and recognized temporary verification errors
+also stay gated without deleting drafts. Same-user reauthentication must succeed
+before any account draft is read; shared recovery additionally loads/reconciles
+fresh authorized roster data. A response superseded by expiry cannot reopen the
+UI; a new SDK event, sign-in or reload is required.
+
+Explicit sign-out (including cross-tab `SIGNED_OUT`), account switching, definite
+or unclassified Auth rejection, missing/mismatched verified identity, and failed
+restaurant access still clear the relevant drafts, preserving permanent rosters.
+The last candidate ID remains in memory only for later scoped deletion even after
+expiry; it never authorizes access. Recognized transient cases are SDK retryable
+fetch errors, network TypeErrors, abort/timeouts, Auth HTTP 408/429/5xx, and
+`bad_jwt` for a locally expired candidate. Unknown errors remain destructive.
+
+`SIGNED_OUT` carries no reason distinguishing explicit sign-out from the SDK's
+permanent session-removal paths. Preserve the existing destructive policy for all
+such events, including after local expiry. Non-`SIGNED_OUT` events with no session
+simply close the gate. The [draft lifecycle](CALCULATION-DRAFTS.md) records this
+conservative trade-off and owner Safari acceptance cases. Project/client changes
+remount the Auth gate before any draft is read; namespaces remain separate. No session token
+or credential is included in calculation draft storage.

@@ -303,3 +303,12 @@ checks. Existing invalid/overflow, account/restaurant/sign-out and management
 regressions now also exercise edits originating in the result input. Browser-local
 regressions remain in the full suite. Native device and live backend checks were
 not run.
+
+## Recovery update (Issue #56)
+
+Earlier memory-only statements are superseded by the versioned browser-local
+[calculation draft lifecycle](CALCULATION-DRAFTS.md). Temporary previews still
+never write roster/shift/payment data to Supabase. Current access and a complete
+fresh roster are required on recovery. Deliberate clears now clear persistence
+as well as memory; successful routine checks and management navigation preserve
+both. Review is required if saved references no longer match eligible defaults.

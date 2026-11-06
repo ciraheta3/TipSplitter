@@ -172,3 +172,18 @@ weights retain their editable row and block every payout until corrected, reset 
 excluded. This adds no permanent persistence or financial policy. Existing preview
 scope, access and management-navigation lifecycle rules apply. See the
 [implementation and pending iPad acceptance](SHARED-ROSTER-CALCULATOR.md#inline-temporary-share-weights-issue-53).
+
+## Calculation draft recovery (Issue #56)
+
+[Lifecycle, security boundaries and Safari acceptance](CALCULATION-DRAFTS.md)
+define browser-local autosave for unfinished previews. This supersedes earlier
+memory-only statements about calculator inputs/temporary participants. Recovery
+uses current authorized shared rows; changed effective defaults/roles or ineligible
+references lose overrides/selection and require explicit review. Renames use
+current labels with the same stable ID. Routine successful checks preserve frozen
+running previews. Explicit reload keeps cash/credit/rounding but clears all
+participation, while Start fresh resets the entire calculation. Access failures
+(including offline verification failure) clear shared drafts, preserving the
+existing fail-closed policy. No finalized payments, historical records, offline
+membership cache or synchronization are introduced. Safari eviction and storage
+denial can still prevent recovery; multiple tabs have no merge protocol.
